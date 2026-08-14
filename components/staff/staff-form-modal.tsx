@@ -6,6 +6,7 @@ import { Select } from "antd";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   inviteStaffSchema,
+  type InviteStaffFormValues,
   type InviteStaffInput,
 } from "@/lib/validations/staff";
 import type { StaffMemberView } from "@/types/interfaces";
@@ -86,7 +87,7 @@ export function StaffFormModal({
     watch,
     control,
     formState: { errors, isSubmitting },
-  } = useForm<InviteStaffInput>({
+  } = useForm<InviteStaffFormValues, unknown, InviteStaffInput>({
     resolver: zodResolver(inviteStaffSchema),
     defaultValues: emptyDefaults(defaultLocationId),
   });
@@ -96,10 +97,8 @@ export function StaffFormModal({
   useEffect(() => {
     if (!open) return;
 
-    if (isEdit && member)
-      reset(memberDefaults(member, defaultLocationId));
-    else
-      reset(emptyDefaults(defaultLocationId));
+    if (isEdit && member) reset(memberDefaults(member, defaultLocationId));
+    else reset(emptyDefaults(defaultLocationId));
   }, [open, isEdit, member, defaultLocationId, reset]);
 
   async function handleFormSubmit(values: InviteStaffInput) {
@@ -154,7 +153,7 @@ export function StaffFormModal({
             <Input
               id="staff-phone"
               type="tel"
-              placeholder="03xx xxx xxxx"
+              placeholder="Enter phone number..."
               {...register("phone")}
             />
             {errors.phone ? (

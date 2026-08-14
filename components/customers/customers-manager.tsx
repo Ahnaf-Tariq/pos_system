@@ -9,7 +9,8 @@ import {
   fetchCustomersWithStats,
 } from "@/lib/customers/catalog";
 import type { Customer, CustomerStats, Order } from "@/types/interfaces";
-import { formatDate, formatDateTime, formatMoney } from "@/lib/utils";
+import { formatDate, formatDateTime, formatMoney, formatOrderStatus } from "@/lib/utils";
+import { useLocationContext } from "@/components/dashboard/location-provider";
 import { useRealtimeRefresh } from "@/hooks/use-realtime-refresh";
 import { useTablePagination } from "@/hooks/use-table-pagination";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ interface CustomersManagerProps {
 }
 
 export function CustomersManager({ userId, currency }: CustomersManagerProps) {
+  const { selectedLocationId } = useLocationContext();
   const [customers, setCustomers] = useState<CustomerStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -48,10 +50,15 @@ export function CustomersManager({ userId, currency }: CustomersManagerProps) {
   const [deleteTarget, setDeleteTarget] = useState<CustomerStats | null>(null);
 
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!selectedLocationId) {
+      setCustomers([]);
+      setLoading(false);
+      return;
+    }
     if (!opts?.silent) setLoading(true);
     try {
       const supabase = createClient();
-      setCustomers(await fetchCustomersWithStats(supabase, userId));
+      setCustomers(await fetchCustomersWithStats(supabase, userId, selectedLocationId));
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not load customers";
@@ -59,7 +66,7 @@ export function CustomersManager({ userId, currency }: CustomersManagerProps) {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, selectedLocationId]);
 
   useEffect(() => {
     void refresh();
@@ -69,6 +76,7 @@ export function CustomersManager({ userId, currency }: CustomersManagerProps) {
     userId,
     tables: ["customers", "orders"],
     onChange: () => void refresh({ silent: true }),
+    enabled: Boolean(selectedLocationId),
   });
 
   const visible = useMemo(() => {
@@ -106,7 +114,7 @@ export function CustomersManager({ userId, currency }: CustomersManagerProps) {
     setDetailCustomer(customer);
     setDetailOpen(true);
     const supabase = createClient();
-    setOrders(await fetchCustomerOrders(supabase, userId, customer.id));
+    setOrders(await fetchCustomerOrders(supabase, userId, customer.id, selectedLocationId));
   }
 
   async function handleSaved(_customer: Customer) {
@@ -260,6 +268,7 @@ export function CustomersManager({ userId, currency }: CustomersManagerProps) {
         open={editorOpen}
         onOpenChange={setEditorOpen}
         userId={userId}
+        locationId={selectedLocationId}
         customer={editing}
         showLoyalty
         onSaved={(customer) => void handleSaved(customer)}
@@ -287,7 +296,7 @@ export function CustomersManager({ userId, currency }: CustomersManagerProps) {
                   <div>
                     <p>{formatDateTime(order.created_at)}</p>
                     <p className="text-xs capitalize text-muted-foreground">
-                      {order.status.replaceAll("_", " ")} ·{" "}
+                      {formatOrderStatus(order.status)} ·{" "}
                       {order.order_type.replaceAll("_", " ")}
                     </p>
                   </div>

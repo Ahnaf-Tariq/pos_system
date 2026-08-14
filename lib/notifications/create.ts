@@ -51,14 +51,21 @@ export async function createNotification(
 export async function fetchNotifications(
   supabase: SupabaseClient,
   userId: string,
+  locationId?: string | null,
   limit = 40
 ): Promise<ShopNotification[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (locationId) {
+    query = query.or(`location_id.eq.${locationId},location_id.is.null`)
+  }
+
+  const { data, error } = await query
 
   if (error) throw new Error(error.message)
   return (data as ShopNotification[]) ?? []

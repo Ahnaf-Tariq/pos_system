@@ -4,13 +4,14 @@ import type { StaffRole } from '@/types/enums'
 
 export async function fetchStaffMembers(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  locationId?: string | null
 ): Promise<StaffMemberView[]> {
   const { data: staff, error } = await supabase
     .from('staff_members')
     .select('*')
     .eq('user_id', userId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
 
   if (error) throw new Error(error.message)
 
@@ -46,7 +47,7 @@ export async function fetchStaffMembers(
     (locations ?? []).map((location) => [location.id, location.name])
   )
 
-  return members.map((member) => {
+  const views = members.map((member) => {
     const profile = profileById.get(member.auth_id)
     return {
       ...member,
@@ -59,6 +60,11 @@ export async function fetchStaffMembers(
         : null,
     }
   })
+
+  if (!locationId) return views
+  return views.filter(
+    (member) => !member.location_id || member.location_id === locationId
+  )
 }
 
 async function loadProfilesByAuthId(

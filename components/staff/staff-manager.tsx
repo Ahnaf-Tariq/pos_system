@@ -50,11 +50,12 @@ export function StaffManager({
   actorAuthId,
   currency,
 }: StaffManagerProps) {
-  const { locations } = useLocationContext();
+  const { locations, selectedLocationId } = useLocationContext();
   const defaultLocationId =
+    selectedLocationId ||
     locations.find((location) => location.name.trim().toLowerCase() === "main")
-      ?.id ??
-    locations[0]?.id ??
+      ?.id ||
+    locations[0]?.id ||
     "";
 
   const [staff, setStaff] = useState<StaffMemberView[]>([]);
@@ -72,10 +73,15 @@ export function StaffManager({
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean }) => {
+      if (!selectedLocationId) {
+        setStaff([]);
+        setLoading(false);
+        return;
+      }
       if (!opts?.silent) setLoading(true);
       try {
         const supabase = createClient();
-        const rows = await fetchStaffMembers(supabase, userId);
+        const rows = await fetchStaffMembers(supabase, userId, selectedLocationId);
         setStaff(rows);
       } catch (err) {
         const message =
@@ -85,7 +91,7 @@ export function StaffManager({
         setLoading(false);
       }
     },
-    [userId],
+    [userId, selectedLocationId],
   );
 
   useEffect(() => {
@@ -96,6 +102,7 @@ export function StaffManager({
     userId,
     tables: ["staff_members", "salary_payments"],
     onChange: () => void refresh({ silent: true }),
+    enabled: Boolean(selectedLocationId),
   });
 
   const {

@@ -57,7 +57,6 @@ export enum InventoryMovementReason {
 export enum PaymentMethod {
   CASH = "cash",
   CARD = "card",
-  SPLIT = "split",
 }
 
 export enum SubscriptionPlan {

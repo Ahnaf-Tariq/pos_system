@@ -1,32 +1,28 @@
-'use client'
+"use client";
 
-import { useCallback, useEffect, useState } from 'react'
-import toast from 'react-hot-toast'
-import { createClient } from '@/lib/supabase/client'
+import { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { createClient } from "@/lib/supabase/client";
 import {
   fetchOrderDetail,
   fetchOrders,
   fetchStaffOptions,
   voidOrder,
-} from '@/lib/orders/history'
-import type { OrderDetail, OrderListRow } from '@/types/interfaces'
-import { useLocationContext } from '@/components/dashboard/location-provider'
-import { useRealtimeRefresh } from '@/hooks/use-realtime-refresh'
-import { useTablePagination } from '@/hooks/use-table-pagination'
-import {
-  OrderStatus,
-  OrderType,
-  StaffRole,
-} from '@/types/enums'
-import { formatDateTime, formatMoney } from '@/lib/utils'
-import { openThermalReceipt } from '@/lib/receipts/open-thermal'
-import { DatePicker, Select } from 'antd'
-import dayjs, { type Dayjs } from 'dayjs'
-import { Printer } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { TablePagination } from '@/components/ui/table-pagination'
+} from "@/lib/orders/history";
+import type { OrderDetail, OrderListRow } from "@/types/interfaces";
+import { useLocationContext } from "@/components/dashboard/location-provider";
+import { useRealtimeRefresh } from "@/hooks/use-realtime-refresh";
+import { useTablePagination } from "@/hooks/use-table-pagination";
+import { OrderStatus, OrderType, StaffRole } from "@/types/enums";
+import { formatDateTime, formatMoney, formatOrderStatus } from "@/lib/utils";
+import { openThermalReceipt } from "@/lib/receipts/open-thermal";
+import { DatePicker, Select } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
+import { Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   Dialog,
   DialogContent,
@@ -34,90 +30,94 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { ConfirmModal } from '@/components/ui/confirm-modal'
-import { AppLoader } from '@/components/ui/app-loader'
+} from "@/components/ui/dialog";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { AppLoader } from "@/components/ui/app-loader";
 
 interface OrdersManagerProps {
-  userId: string
-  currency: string
-  role: StaffRole
+  userId: string;
+  currency: string;
+  role: StaffRole;
 }
 
 function todayInput() {
-  return new Date().toISOString().slice(0, 10)
+  return new Date().toISOString().slice(0, 10);
 }
 
 function daysAgoInput(days: number) {
-  const date = new Date()
-  date.setDate(date.getDate() - days)
-  return date.toISOString().slice(0, 10)
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toISOString().slice(0, 10);
 }
 
 export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
-  const { selectedLocationId } = useLocationContext()
-  const canVoid = role === StaffRole.OWNER || role === StaffRole.MANAGER
+  const { selectedLocationId } = useLocationContext();
+  const canVoid = role === StaffRole.OWNER || role === StaffRole.MANAGER;
 
-  const [orders, setOrders] = useState<OrderListRow[]>([])
-  const [staffOptions, setStaffOptions] = useState<{ auth_id: string; full_name: string }[]>(
-    []
-  )
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<OrderStatus | 'all'>('all')
-  const [orderType, setOrderType] = useState<OrderType | 'all'>('all')
-  const [staffAuthId, setStaffAuthId] = useState<string | 'all'>('all')
-  const [fromDate, setFromDate] = useState(daysAgoInput(7))
-  const [toDate, setToDate] = useState(todayInput())
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [detail, setDetail] = useState<OrderDetail | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [voidOpen, setVoidOpen] = useState(false)
+  const [orders, setOrders] = useState<OrderListRow[]>([]);
+  const [staffOptions, setStaffOptions] = useState<
+    { auth_id: string; full_name: string }[]
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<OrderStatus | "all">("all");
+  const [orderType, setOrderType] = useState<OrderType | "all">("all");
+  const [staffAuthId, setStaffAuthId] = useState<string | "all">("all");
+  const [fromDate, setFromDate] = useState(daysAgoInput(7));
+  const [toDate, setToDate] = useState(todayInput());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<OrderDetail | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [voidOpen, setVoidOpen] = useState(false);
 
-  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setLoading(true)
-    try {
-      const supabase = createClient()
-      const [rows, staff] = await Promise.all([
-        fetchOrders(supabase, userId, {
-          locationId: selectedLocationId,
-          status,
-          orderType,
-          staffAuthId,
-          search,
-          fromDate,
-          toDate,
-        }),
-        fetchStaffOptions(supabase, userId),
-      ])
-      setOrders(rows)
-      setStaffOptions(staff)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not load orders'
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
-  }, [
-    userId,
-    selectedLocationId,
-    status,
-    orderType,
-    staffAuthId,
-    search,
-    fromDate,
-    toDate,
-  ])
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      try {
+        const supabase = createClient();
+        const [rows, staff] = await Promise.all([
+          fetchOrders(supabase, userId, {
+            locationId: selectedLocationId,
+            status,
+            orderType,
+            staffAuthId,
+            search,
+            fromDate,
+            toDate,
+          }),
+          fetchStaffOptions(supabase, userId),
+        ]);
+        setOrders(rows);
+        setStaffOptions(staff);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Could not load orders";
+        toast.error(message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      userId,
+      selectedLocationId,
+      status,
+      orderType,
+      staffAuthId,
+      search,
+      fromDate,
+      toDate,
+    ],
+  );
 
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    void refresh();
+  }, [refresh]);
 
   useRealtimeRefresh({
     userId,
-    tables: ['orders', 'order_items'],
+    tables: ["orders", "order_items"],
     onChange: () => void refresh({ silent: true }),
-  })
+  });
 
   const {
     pageItems: pagedOrders,
@@ -128,36 +128,36 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
     from,
     to,
   } = useTablePagination(orders, {
-    resetKey: `${status}|${orderType}|${staffAuthId}|${search}|${fromDate}|${toDate}|${selectedLocationId ?? ''}`,
-  })
+    resetKey: `${status}|${orderType}|${staffAuthId}|${search}|${fromDate}|${toDate}|${selectedLocationId ?? ""}`,
+  });
 
   useEffect(() => {
     if (!selectedId) {
-      setDetail(null)
-      return
+      setDetail(null);
+      return;
     }
     void (async () => {
-      const supabase = createClient()
-      const row = await fetchOrderDetail(supabase, userId, selectedId)
-      setDetail(row)
-    })()
-  }, [selectedId, userId])
+      const supabase = createClient();
+      const row = await fetchOrderDetail(supabase, userId, selectedId);
+      setDetail(row);
+    })();
+  }, [selectedId, userId]);
 
   async function handleVoid() {
-    if (!detail || !canVoid) return
-    setBusy(true)
+    if (!detail || !canVoid) return;
+    setBusy(true);
     try {
-      const supabase = createClient()
-      await voidOrder(supabase, userId, detail.id)
-      setSelectedId(null)
-      setVoidOpen(false)
-      toast.success('Order voided')
-      await refresh()
+      const supabase = createClient();
+      await voidOrder(supabase, userId, detail.id);
+      setSelectedId(null);
+      setVoidOpen(false);
+      toast.success("Order cancelled");
+      await refresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Void failed'
-      toast.error(message)
+      const message = err instanceof Error ? err.message : "Cancel failed";
+      toast.error(message);
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
@@ -166,7 +166,7 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Search history, open receipts, and void when permitted.
+          Search history, open receipts, and cancel when permitted.
         </p>
       </div>
 
@@ -180,24 +180,24 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
         <Select
           className="w-full"
           value={status}
-          onChange={(value) => setStatus(value as OrderStatus | 'all')}
+          onChange={(value) => setStatus(value as OrderStatus | "all")}
           options={[
-            { value: 'all', label: 'All statuses' },
+            { value: "all", label: "All statuses" },
             ...Object.values(OrderStatus).map((value) => ({
               value,
-              label: value.replaceAll('_', ' '),
+              label: formatOrderStatus(value),
             })),
           ]}
         />
         <Select
           className="w-full"
           value={orderType}
-          onChange={(value) => setOrderType(value as OrderType | 'all')}
+          onChange={(value) => setOrderType(value as OrderType | "all")}
           options={[
-            { value: 'all', label: 'All types' },
+            { value: "all", label: "All types" },
             ...Object.values(OrderType).map((value) => ({
               value,
-              label: value.replaceAll('_', ' '),
+              label: value.replaceAll("_", " "),
             })),
           ]}
         />
@@ -206,7 +206,7 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
           value={staffAuthId}
           onChange={(value) => setStaffAuthId(value)}
           options={[
-            { value: 'all', label: 'All staff' },
+            { value: "all", label: "All staff" },
             ...staffOptions.map((staff) => ({
               value: staff.auth_id,
               label: staff.full_name,
@@ -218,7 +218,7 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
             className="w-full"
             value={fromDate ? dayjs(fromDate) : null}
             onChange={(value: Dayjs | null) =>
-              setFromDate(value ? value.format('YYYY-MM-DD') : '')
+              setFromDate(value ? value.format("YYYY-MM-DD") : "")
             }
             placeholder="From date"
             allowClear
@@ -227,7 +227,7 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
             className="w-full"
             value={toDate ? dayjs(toDate) : null}
             onChange={(value: Dayjs | null) =>
-              setToDate(value ? value.format('YYYY-MM-DD') : '')
+              setToDate(value ? value.format("YYYY-MM-DD") : "")
             }
             placeholder="To date"
             allowClear
@@ -265,22 +265,22 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
                     {formatDateTime(order.created_at)}
                   </td>
                   <td className="px-4 py-3 capitalize">
-                    {order.order_type.replaceAll('_', ' ')}
+                    {order.order_type.replaceAll("_", " ")}
                   </td>
-                  <td className="px-4 py-3">{order.table_label ?? '—'}</td>
-                  <td className="px-4 py-3">{order.opened_by_name ?? '—'}</td>
+                  <td className="px-4 py-3">{order.table_label ?? "—"}</td>
+                  <td className="px-4 py-3">{order.opened_by_name ?? "—"}</td>
                   <td className="px-4 py-3">
                     <Badge
                       variant={
                         order.status === OrderStatus.VOID
-                          ? 'destructive'
+                          ? "destructive"
                           : order.status === OrderStatus.PAID
-                            ? 'success'
-                            : 'secondary'
+                            ? "success"
+                            : "secondary"
                       }
                       className="capitalize"
                     >
-                      {order.status.replaceAll('_', ' ')}
+                      {formatOrderStatus(order.status)}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 money text-sm">
@@ -301,23 +301,28 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
         </div>
       )}
 
-      <Dialog open={Boolean(selectedId)} onOpenChange={(open) => !open && setSelectedId(null)}>
+      <Dialog
+        open={Boolean(selectedId)}
+        onOpenChange={(open) => !open && setSelectedId(null)}
+      >
         <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Order receipt</DialogTitle>
             <DialogDescription>
               {detail
-                ? `${formatDateTime(detail.created_at)} · ${detail.order_type.replaceAll('_', ' ')}`
-                : 'Fetching receipt details'}
+                ? `${formatDateTime(detail.created_at)} · ${detail.order_type.replaceAll("_", " ")}`
+                : "Fetching receipt details"}
             </DialogDescription>
           </DialogHeader>
 
           {detail ? (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <span>Table: {detail.table_label ?? '—'}</span>
-                <span>Staff: {detail.opened_by_name ?? '—'}</span>
-                <span className="capitalize">Status: {detail.status.replaceAll('_', ' ')}</span>
+                <span>Table: {detail.table_label ?? "—"}</span>
+                <span>Staff: {detail.opened_by_name ?? "—"}</span>
+                <span className="capitalize">
+                  Status: {formatOrderStatus(detail.status)}
+                </span>
               </div>
 
               <ul className="space-y-2">
@@ -332,11 +337,15 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
                       </p>
                       {item.selected_modifiers.length > 0 ? (
                         <p className="text-xs text-muted-foreground">
-                          {item.selected_modifiers.map((modifier) => modifier.name).join(', ')}
+                          {item.selected_modifiers
+                            .map((modifier) => modifier.name)
+                            .join(", ")}
                         </p>
                       ) : null}
                       {item.notes ? (
-                        <p className="text-xs text-primary">Note: {item.notes}</p>
+                        <p className="text-xs text-primary">
+                          Note: {item.notes}
+                        </p>
                       ) : null}
                     </div>
                     <span className="money text-xs">
@@ -357,7 +366,9 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Total</span>
-                  <span className="money">{formatMoney(detail.grand_total, currency)}</span>
+                  <span className="money">
+                    {formatMoney(detail.grand_total, currency)}
+                  </span>
                 </div>
               </div>
             </div>
@@ -376,7 +387,11 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
                 Print thermal
               </Button>
             ) : null}
-            <Button type="button" variant="outline" onClick={() => setSelectedId(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSelectedId(null)}
+            >
               Close
             </Button>
             {canVoid && detail && detail.status !== OrderStatus.VOID ? (
@@ -386,7 +401,7 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
                 disabled={busy}
                 onClick={() => setVoidOpen(true)}
               >
-                Void order
+                Cancel order
               </Button>
             ) : null}
           </DialogFooter>
@@ -395,17 +410,17 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
 
       <ConfirmModal
         open={voidOpen}
-        title="Void this order?"
+        title="Cancel this order?"
         description="This cannot be undone."
-        confirmText="Void"
-        cancelText="Cancel"
+        confirmText="Cancel order"
+        cancelText="Back"
         danger
         confirmLoading={busy}
         onConfirm={() => void handleVoid()}
         onCancel={() => {
-          if (!busy) setVoidOpen(false)
+          if (!busy) setVoidOpen(false);
         }}
       />
     </div>
-  )
+  );
 }

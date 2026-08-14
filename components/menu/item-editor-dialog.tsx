@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Trash2 } from "lucide-react";
+import { ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadMenuImage } from "@/lib/menu/catalog";
 import { menuItemSchema, type MenuItemInput } from "@/lib/validations/menu";
@@ -14,7 +14,7 @@ import type {
   Modifier,
   ModifierGroup,
 } from "@/types/interfaces";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, cn } from "@/lib/utils";
 import { Select, Modal, Input as AntInput } from "antd";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ interface ItemEditorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userId: string;
+  locationId: string | null;
   currency: string;
   categories: Category[];
   item: MenuItemWithGroups | null;
@@ -47,6 +48,7 @@ export function ItemEditorDialog({
   open,
   onOpenChange,
   userId,
+  locationId,
   currency,
   categories,
   item,
@@ -55,6 +57,7 @@ export function ItemEditorDialog({
 }: ItemEditorDialogProps) {
   const [uploading, setUploading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [groups, setGroups] = useState<
     (ModifierGroup & { modifiers: Modifier[] })[]
   >([]);
@@ -134,14 +137,27 @@ export function ItemEditorDialog({
       toast.error(message);
     } finally {
       setUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
     }
   }
 
+  function removeImage() {
+    setImageUrl(null);
+    setValue("image_url", "");
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  }
+
   async function onSubmit(values: MenuItemInput) {
+    if (!locationId) {
+      toast.error("Select a location in the header first");
+      return;
+    }
+
     const supabase = createClient();
 
     const payload = {
       user_id: userId,
+      location_id: locationId,
       name: values.name.trim(),
       description: values.description?.trim() || null,
       price: values.price,
@@ -519,23 +535,54 @@ export function ItemEditorDialog({
 
             <div className="space-y-2">
               <Label htmlFor="image">Image</Label>
-              <Input
-                id="image"
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                onChange={(event) =>
-                  handleImageChange(event.target.files?.[0] ?? null)
-                }
-                disabled={uploading}
-              />
-              {imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={imageUrl}
-                  alt="Menu item"
-                  className="mt-2 h-28 w-28 rounded-md border border-border object-cover"
-                />
-              ) : null}
+              <div className="relative size-24 shrink-0">
+                <label
+                  htmlFor="image"
+                  className={cn(
+                    "flex size-24 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-dashed border-border bg-secondary/30 transition-colors hover:border-primary/60 hover:bg-secondary/50",
+                    uploading && "pointer-events-none opacity-60",
+                    imageUrl && "border-solid",
+                  )}
+                >
+                  {imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={imageUrl}
+                      alt="Menu item"
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex flex-col items-center gap-1 text-primary">
+                      <ImagePlus className="size-5" />
+                      <span className="text-[10px] font-medium">
+                        {uploading ? "…" : "Add"}
+                      </span>
+                    </span>
+                  )}
+                  <input
+                    ref={imageInputRef}
+                    id="image"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    disabled={uploading}
+                    className="sr-only"
+                    onChange={(event) =>
+                      handleImageChange(event.target.files?.[0] ?? null)
+                    }
+                  />
+                </label>
+                {imageUrl ? (
+                  <button
+                    type="button"
+                    title="Remove image"
+                    aria-label="Remove image"
+                    className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm hover:opacity-90"
+                    onClick={removeImage}
+                  >
+                    <X className="size-3" />
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-6">
@@ -662,7 +709,7 @@ export function ItemEditorDialog({
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 border-t border-border pt-4">
+          <DialogFooter className="shrink-0 pt-2">
             <Button
               type="button"
               variant="outline"

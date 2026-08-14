@@ -26,7 +26,12 @@ export default async function DashboardLayout({
 
   return (
     <DashboardShell session={session} isSuperAdmin={superAdmin}>
-      <RoleRouteGuard role={session.staffMember.role}>{children}</RoleRouteGuard>
+      <RoleRouteGuard
+        role={session.staffMember.role}
+        kdsEnabled={session.shop.kds_enabled !== false}
+      >
+        {children}
+      </RoleRouteGuard>
     </DashboardShell>
   )
 }

@@ -46,3 +46,8 @@ function toValidDate(value: string | Date | null | undefined): Date | null {
 function pad2(value: number) {
   return String(value).padStart(2, '0')
 }
+
+export function formatOrderStatus(status: string): string {
+  if (status === 'void') return 'cancel'
+  return status.replaceAll('_', ' ')
+}

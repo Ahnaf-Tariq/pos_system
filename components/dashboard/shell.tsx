@@ -20,6 +20,7 @@ export function DashboardShell({
 
   return (
     <LocationProvider
+      shopUserId={session.shop.user_id}
       locations={session.locations}
       staffLocationId={session.staffMember.location_id}
     >
@@ -27,6 +28,7 @@ export function DashboardShell({
         <DashboardSidebar
           businessName={session.shop.business_name}
           role={session.staffMember.role}
+          kdsEnabled={session.shop.kds_enabled !== false}
           collapsed={collapsed}
           onToggle={() => setCollapsed((value) => !value)}
         />

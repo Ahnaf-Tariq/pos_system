@@ -30,7 +30,7 @@ export function DashboardHeader({
   isSuperAdmin = false,
 }: DashboardHeaderProps) {
   const router = useRouter()
-  const { locations, selectedLocation, setSelectedLocationId } =
+  const { locations, selectedLocation, setSelectedLocationId, isLocationLocked } =
     useLocationContext()
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -71,28 +71,37 @@ export function DashboardHeader({
     <>
       <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur">
         <div className="min-w-0">
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: 'label',
-                  label: 'Locations',
-                  disabled: true,
-                  style: { opacity: 0.65, cursor: 'default' },
-                },
-                { type: 'divider' },
-                ...locationItems,
-              ],
-            }}
-            trigger={['click']}
-          >
-            <Button variant="outline" className="min-h-11 gap-2">
+          {isLocationLocked ? (
+            <Button variant="outline" className="min-h-11 gap-2" disabled>
               <MapPin className="size-4 text-primary" />
               <span className="max-w-[180px] truncate">
-                {selectedLocation?.name ?? 'Select location'}
+                {selectedLocation?.name ?? 'Location'}
               </span>
             </Button>
-          </Dropdown>
+          ) : (
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'label',
+                    label: 'Locations',
+                    disabled: true,
+                    style: { opacity: 0.65, cursor: 'default' },
+                  },
+                  { type: 'divider' },
+                  ...locationItems,
+                ],
+              }}
+              trigger={['click']}
+            >
+              <Button variant="outline" className="min-h-11 gap-2">
+                <MapPin className="size-4 text-primary" />
+                <span className="max-w-[180px] truncate">
+                  {selectedLocation?.name ?? 'Select location'}
+                </span>
+              </Button>
+            </Dropdown>
+          )}
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">

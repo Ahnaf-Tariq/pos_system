@@ -28,6 +28,7 @@ export async function fetchPlatformShops(
   return rows.map((shop) => ({
     ...shop,
     tax_rate: Number(shop.tax_rate ?? 0),
+    kds_enabled: shop.kds_enabled !== false,
     owner_name: nameById.get(shop.owner_auth_id) ?? null,
     owner_email: null,
   }))

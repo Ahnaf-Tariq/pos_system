@@ -20,6 +20,8 @@ export default async function KdsPage() {
   const session = await getDashboardSession(supabase, user.id)
   if (!session) redirect(ROUTES.pendingApproval)
 
+  if (session.shop.kds_enabled === false) redirect(ROUTES.dashboard)
+
   return (
     <KdsBoard
       userId={session.shop.user_id}

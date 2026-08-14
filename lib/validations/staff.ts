@@ -13,10 +13,11 @@ export const inviteStaffSchema = z.object({
     StaffRole.KITCHEN,
   ]),
   locationId: z.string().uuid('Pick one location'),
-  salary: z.coerce.number().min(0, 'Salary cannot be negative'),
+  salary: z.number().min(0, 'Salary cannot be negative'),
 })
 
-export type InviteStaffInput = z.infer<typeof inviteStaffSchema>
+export type InviteStaffInput = z.output<typeof inviteStaffSchema>
+export type InviteStaffFormValues = z.input<typeof inviteStaffSchema>
 
 export const editStaffSchema = z.object({
   fullName: z.string().min(2, 'Name is required'),
@@ -30,7 +31,7 @@ export const editStaffSchema = z.object({
     StaffRole.KITCHEN,
   ]),
   locationId: z.string().uuid('Pick one location'),
-  salary: z.coerce.number().min(0, 'Salary cannot be negative'),
+  salary: z.number().min(0, 'Salary cannot be negative'),
 })
 
 export type EditStaffInput = z.infer<typeof editStaffSchema>

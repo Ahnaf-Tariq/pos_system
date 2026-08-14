@@ -49,7 +49,11 @@ export async function getDashboardSession(
   return {
     authId,
     email: null,
-    shop: shop as Shop,
+    shop: {
+      ...(shop as Shop),
+      tax_rate: Number((shop as Shop).tax_rate ?? 0),
+      kds_enabled: (shop as Shop).kds_enabled !== false,
+    },
     staffMember: staffMember as StaffMember,
     profile: (profile as Profile | null) ?? null,
     locations: (locations as Location[]) ?? [],

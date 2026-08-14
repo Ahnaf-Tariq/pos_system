@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getDashboardSession } from '@/lib/auth/session'
-import { fetchMenuCatalog } from '@/lib/menu/catalog'
 import { MenuManager } from '@/components/menu/menu-manager'
 import { ROUTES } from '@/lib/routes'
 
@@ -21,14 +20,12 @@ export default async function MenuPage() {
   const session = await getDashboardSession(supabase, user.id)
   if (!session) redirect(ROUTES.pendingApproval)
 
-  const catalog = await fetchMenuCatalog(supabase, session.shop.user_id)
-
   return (
     <MenuManager
       userId={session.shop.user_id}
       currency={session.shop.currency}
-      initialCategories={catalog.categories}
-      initialItems={catalog.items}
+      initialCategories={[]}
+      initialItems={[]}
     />
   )
 }

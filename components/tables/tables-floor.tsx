@@ -14,7 +14,7 @@ import { useShopRealtime } from '@/hooks/use-shop-realtime'
 import { useLocationContext } from '@/components/dashboard/location-provider'
 import { OrderStatus, TableStatus } from '@/types/enums'
 import { ROUTES } from '@/lib/routes'
-import { formatMoney, cn } from '@/lib/utils'
+import { formatMoney, formatOrderStatus, cn } from '@/lib/utils'
 import { Select } from 'antd'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -388,7 +388,7 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
                 {formatMoney(Number(selected.activeOrder.grand_total), currency)}
               </p>
               <p className="mt-1 text-xs capitalize text-muted-foreground">
-                {selected.activeOrder.status.replaceAll('_', ' ')}
+                {formatOrderStatus(selected.activeOrder.status)}
               </p>
             </div>
           ) : null}
@@ -532,7 +532,7 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
           <DialogHeader>
             <DialogTitle>Merge into {selected?.label}</DialogTitle>
             <DialogDescription>
-              Pull another table’s open order items into this table, then void the source order.
+              Pull another table’s open order items into this table, then cancel the source order.
             </DialogDescription>
           </DialogHeader>
           <Select

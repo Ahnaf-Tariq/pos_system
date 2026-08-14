@@ -96,17 +96,26 @@ export function LoginForm() {
 
     toast.success("Signed in");
 
-    const { data: staff } = await supabase
-      .from("staff_members")
-      .select("role")
-      .eq("user_id", shop.user_id)
-      .eq("auth_id", data.user.id)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
+    const [{ data: staff }, { data: shopFlags }] = await Promise.all([
+      supabase
+        .from("staff_members")
+        .select("role")
+        .eq("user_id", shop.user_id)
+        .eq("auth_id", data.user.id)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("users")
+        .select("kds_enabled")
+        .eq("user_id", shop.user_id)
+        .maybeSingle(),
+    ]);
 
     router.replace(
-      getDefaultRouteForRole((staff?.role as StaffRole | undefined) ?? null),
+      getDefaultRouteForRole((staff?.role as StaffRole | undefined) ?? null, {
+        kdsEnabled: shopFlags?.kds_enabled !== false,
+      }),
     );
     router.refresh();
   }

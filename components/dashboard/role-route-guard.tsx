@@ -10,16 +10,18 @@ import type { StaffRole } from '@/types/enums'
 
 export function RoleRouteGuard({
   role,
+  kdsEnabled = true,
   children,
 }: {
   role: StaffRole
+  kdsEnabled?: boolean
   children: React.ReactNode
 }) {
   const pathname = usePathname()
   const router = useRouter()
   const allowedHrefs = useMemo(
-    () => getNavItemsForRole(role).map((item) => item.href),
-    [role]
+    () => getNavItemsForRole(role, { kdsEnabled }).map((item) => item.href),
+    [role, kdsEnabled]
   )
 
   const isAllowed = allowedHrefs.some(
@@ -27,8 +29,8 @@ export function RoleRouteGuard({
   )
 
   useEffect(() => {
-    if (!isAllowed) router.replace(getDefaultRouteForRole(role))
-  }, [isAllowed, role, router])
+    if (!isAllowed) router.replace(getDefaultRouteForRole(role, { kdsEnabled }))
+  }, [isAllowed, role, kdsEnabled, router])
 
   if (!isAllowed) {
     return (

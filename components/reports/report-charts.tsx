@@ -10,7 +10,7 @@ const ReactApexChart = dynamic(() => import("react-apexcharts"), {
 });
 
 /** First color = brand primary; curated palette then unlimited HSL hues. */
-const PRIMARY_CHART_COLOR = "#2EF2C5"
+const PRIMARY_CHART_COLOR = "#2EF2C5";
 const CURATED_ITEM_COLORS = [
   "#FBBF24", // amber
   "#38BDF8", // sky
@@ -23,23 +23,23 @@ const CURATED_ITEM_COLORS = [
   "#E879F9", // fuchsia
   "#84CC16", // lime
   "#818CF8", // indigo
-]
+];
 
 function itemChartColor(index: number): string {
-  if (index === 0) return PRIMARY_CHART_COLOR
-  const curatedIndex = index - 1
+  if (index === 0) return PRIMARY_CHART_COLOR;
+  const curatedIndex = index - 1;
   if (curatedIndex < CURATED_ITEM_COLORS.length)
-    return CURATED_ITEM_COLORS[curatedIndex]
+    return CURATED_ITEM_COLORS[curatedIndex];
 
   // Beyond curated list: golden-angle hues so colors stay distinct forever
-  const overflow = curatedIndex - CURATED_ITEM_COLORS.length
-  const hue = (overflow * 137.508) % 360
-  const lightness = 58 + (overflow % 3) * 6
-  return `hsl(${hue.toFixed(1)} 78% ${lightness}%)`
+  const overflow = curatedIndex - CURATED_ITEM_COLORS.length;
+  const hue = (overflow * 137.508) % 360;
+  const lightness = 58 + (overflow % 3) * 6;
+  return `hsl(${hue.toFixed(1)} 78% ${lightness}%)`;
 }
 
 function itemChartColors(count: number): string[] {
-  return Array.from({ length: count }, (_, index) => itemChartColor(index))
+  return Array.from({ length: count }, (_, index) => itemChartColor(index));
 }
 
 interface SalesPeriodChartProps {
@@ -123,7 +123,7 @@ export function TopItemsChart({ items, currency }: TopItemsChartProps) {
   const slice = items.slice(0, 10);
   const labels = slice.map((item) => item.name);
   const series = slice.map((item) => Number(item.revenue.toFixed(2)));
-  const colors = itemChartColors(slice.length)
+  const colors = itemChartColors(slice.length);
 
   const options: ApexOptions = {
     chart: {

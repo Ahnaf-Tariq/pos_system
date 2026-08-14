@@ -14,44 +14,56 @@ interface LocationContextValue {
   locations: Location[]
   selectedLocationId: string | null
   selectedLocation: Location | null
+  isLocationLocked: boolean
+  isReady: boolean
   setSelectedLocationId: (id: string) => void
 }
 
 const LocationContext = createContext<LocationContextValue | null>(null)
 
-const STORAGE_KEY = 'auric_selected_location_id'
+function storageKey(shopUserId: string) {
+  return `auric_selected_location_id:${shopUserId}`
+}
 
 export function LocationProvider({
+  shopUserId,
   locations,
   staffLocationId,
   children,
 }: {
+  shopUserId: string
   locations: Location[]
   staffLocationId: string | null
   children: ReactNode
 }) {
-  const [selectedLocationId, setSelectedLocationIdState] = useState<string | null>(null)
+  const isLocationLocked = Boolean(staffLocationId)
+  const [selectedLocationId, setSelectedLocationIdState] = useState<string | null>(
+    staffLocationId
+  )
 
   const syncInitialLocation = useEffectEvent(() => {
+    if (isLocationLocked && staffLocationId) {
+      setSelectedLocationIdState(staffLocationId)
+      return
+    }
+
     const stored =
-      typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null
+      typeof window !== 'undefined'
+        ? window.localStorage.getItem(storageKey(shopUserId))
+        : null
     const storedValid = locations.some((location) => location.id === stored)
-    const staffValid = locations.some((location) => location.id === staffLocationId)
-    const nextId = storedValid
-      ? stored
-      : staffValid
-        ? staffLocationId
-        : (locations[0]?.id ?? null)
+    const nextId = storedValid ? stored : (locations[0]?.id ?? null)
     setSelectedLocationIdState(nextId)
   })
 
   useEffect(() => {
     syncInitialLocation()
-  }, [locations, staffLocationId])
+  }, [shopUserId, locations, staffLocationId, isLocationLocked])
 
   function setSelectedLocationId(id: string) {
+    if (isLocationLocked) return
     setSelectedLocationIdState(id)
-    window.localStorage.setItem(STORAGE_KEY, id)
+    window.localStorage.setItem(storageKey(shopUserId), id)
   }
 
   const selectedLocation =
@@ -63,6 +75,8 @@ export function LocationProvider({
         locations,
         selectedLocationId,
         selectedLocation,
+        isLocationLocked,
+        isReady: Boolean(selectedLocationId) || locations.length === 0,
         setSelectedLocationId,
       }}
     >
@@ -75,4 +89,10 @@ export function useLocationContext() {
   const context = useContext(LocationContext)
   if (!context) throw new Error('useLocationContext must be used within LocationProvider')
   return context
+}
+
+/** Active branch for data fetches. Null until locations hydrate. */
+export function useActiveLocationId() {
+  const { selectedLocationId, isReady } = useLocationContext()
+  return isReady ? selectedLocationId : null
 }

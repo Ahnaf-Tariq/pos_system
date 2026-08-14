@@ -86,7 +86,7 @@ export async function fetchReportBundle(
     .eq('user_id', userId)
     .gte('created_at', fromBound.start)
     .lte('created_at', toBound.end)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
 
   if (filters.locationId) query = query.eq('location_id', filters.locationId)
 

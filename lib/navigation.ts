@@ -92,13 +92,31 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ]
 
-export function getNavItemsForRole(role: StaffRole | null | undefined): NavItem[] {
-  if (!role) return NAV_ITEMS.filter((item) => item.roles.includes(StaffRole.OWNER))
-  return NAV_ITEMS.filter((item) => item.roles.includes(role))
+export function getNavItemsForRole(
+  role: StaffRole | null | undefined,
+  options?: { kdsEnabled?: boolean }
+): NavItem[] {
+  const resolvedRole = role ?? StaffRole.OWNER
+  const kdsEnabled = options?.kdsEnabled !== false
+  const items = NAV_ITEMS.filter((item) => {
+    if (!item.roles.includes(resolvedRole)) return false
+    if (!kdsEnabled && item.href === ROUTES.kds) return false
+    return true
+  })
+
+  if (!kdsEnabled && resolvedRole === StaffRole.KITCHEN && items.length === 0) {
+    return NAV_ITEMS.filter((item) => item.href === ROUTES.dashboard)
+  }
+
+  return items
 }
 
-export function getDefaultRouteForRole(role: StaffRole | null | undefined): AppRoute {
-  if (role === StaffRole.KITCHEN) return ROUTES.kds
+export function getDefaultRouteForRole(
+  role: StaffRole | null | undefined,
+  options?: { kdsEnabled?: boolean }
+): AppRoute {
+  const kdsEnabled = options?.kdsEnabled !== false
+  if (role === StaffRole.KITCHEN) return kdsEnabled ? ROUTES.kds : ROUTES.dashboard
   if (role === StaffRole.CASHIER) return ROUTES.pos
   if (role === StaffRole.WAITER) return ROUTES.tables
   return ROUTES.dashboard

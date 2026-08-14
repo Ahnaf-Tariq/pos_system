@@ -157,8 +157,9 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
               hint={`${report.paidOrders} paid orders`}
             />
             <StatCard
-              label="Avg ticket"
-              value={formatMoney(report.averageTicket, currency)}
+              label="Total orders"
+              value={String(report.paidOrders + report.voidCount)}
+              hint={`${report.paidOrders} paid · ${report.voidCount} cancelled`}
             />
             <StatCard
               label="Discounts"
@@ -166,7 +167,7 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
               hint={`${report.discounts.length} discounted orders`}
             />
             <StatCard
-              label="Voids"
+              label="Cancels"
               value={String(report.voidCount)}
               hint={formatMoney(report.voidTotal, currency)}
             />
@@ -292,10 +293,12 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
             </section>
 
             <section className="rounded-lg border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold">Void audit</h2>
+              <h2 className="text-sm font-semibold">Cancel audit</h2>
               <ul className="mt-4 space-y-2 text-sm">
                 {report.voids.length === 0 ? (
-                  <li className="text-muted-foreground">No voids in range.</li>
+                  <li className="text-muted-foreground">
+                    No cancels in range.
+                  </li>
                 ) : (
                   report.voids.slice(0, 12).map((row) => (
                     <li key={row.id} className="flex justify-between gap-3">

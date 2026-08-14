@@ -60,6 +60,7 @@ export function InventoryManager({ userId, currency }: InventoryManagerProps) {
   const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     if (!selectedLocationId) {
       setItems([]);
+      setMenuItems([]);
       setLoading(false);
       return;
     }
@@ -68,7 +69,7 @@ export function InventoryManager({ userId, currency }: InventoryManagerProps) {
       const supabase = createClient();
       const [inventory, menus] = await Promise.all([
         fetchInventoryItems(supabase, userId, selectedLocationId),
-        fetchMenuItemsForRecipes(supabase, userId),
+        fetchMenuItemsForRecipes(supabase, userId, selectedLocationId),
       ]);
       setItems(inventory);
       setMenuItems(menus);

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { Plus, Printer, Send, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -23,7 +24,14 @@ import {
   startOfflineSyncLoop,
   syncPendingOrders,
 } from "@/lib/offline/sync-engine";
+import { fetchCustomersList } from "@/lib/customers/catalog";
+import { fetchMenuCatalog } from "@/lib/menu/catalog";
+import {
+  assertRecipeStockForCart,
+  RecipeStockError,
+} from "@/lib/inventory/deduct";
 import { formatMoney } from "@/lib/utils";
+import { ROUTES } from "@/lib/routes";
 import { useLocationContext } from "@/components/dashboard/location-provider";
 import { useShopRealtime } from "@/hooks/use-shop-realtime";
 import { PosCart } from "@/components/pos/cart";
@@ -47,6 +55,7 @@ interface PosTerminalProps {
   tables: RestaurantTable[];
   customers: Customer[];
   initialTableId?: string | null;
+  kdsEnabled?: boolean;
 }
 
 export function PosTerminal({
@@ -59,9 +68,13 @@ export function PosTerminal({
   tables: initialTables,
   customers: initialCustomers,
   initialTableId = null,
+  kdsEnabled = true,
 }: PosTerminalProps) {
+  const router = useRouter();
   const { selectedLocationId } = useLocationContext();
   const [tables, setTables] = useState(initialTables);
+  const [menuCategories, setMenuCategories] = useState(categories);
+  const [menuItems, setMenuItems] = useState(items);
   const [customerList, setCustomerList] = useState(initialCustomers);
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [categoryId, setCategoryId] = useState<string | "all">("all");
@@ -88,8 +101,8 @@ export function PosTerminal({
   const setDiscountTotal = usePosStore((state) => state.setDiscountTotal);
 
   const activeItems = useMemo(
-    () => items.filter((item) => item.is_active),
-    [items],
+    () => menuItems.filter((item) => item.is_active),
+    [menuItems],
   );
 
   const visibleItems = useMemo(() => {
@@ -121,6 +134,70 @@ export function PosTerminal({
     taxRatePercent,
   );
 
+  const refreshMenu = useCallback(async () => {
+    if (!selectedLocationId) {
+      setMenuCategories([]);
+      setMenuItems([]);
+      return;
+    }
+    const supabase = createClient();
+    try {
+      const catalog = await fetchMenuCatalog(
+        supabase,
+        userId,
+        selectedLocationId,
+      );
+      setMenuCategories(catalog.categories);
+      setMenuItems(catalog.items);
+    } catch {
+      setMenuCategories([]);
+      setMenuItems([]);
+    }
+  }, [selectedLocationId, userId]);
+
+  useEffect(() => {
+    void refreshMenu();
+  }, [refreshMenu]);
+
+  const didSkipInitialLocation = useRef(false);
+  useEffect(() => {
+    if (!didSkipInitialLocation.current) {
+      didSkipInitialLocation.current = true;
+      return;
+    }
+    setCategoryId("all");
+    clearCart();
+  }, [selectedLocationId, clearCart]);
+
+  const refreshCustomers = useCallback(async () => {
+    if (!selectedLocationId) {
+      setCustomerList([]);
+      return;
+    }
+    const supabase = createClient();
+    try {
+      setCustomerList(await fetchCustomersList(supabase, userId, selectedLocationId));
+    } catch {
+      setCustomerList([]);
+    }
+  }, [selectedLocationId, userId]);
+
+  useEffect(() => {
+    void refreshCustomers();
+  }, [refreshCustomers]);
+
+  useEffect(() => {
+    if (customerId && !customerList.some((customer) => customer.id === customerId)) {
+      setCustomerId(null);
+    }
+  }, [customerId, customerList, setCustomerId]);
+
+  useEffect(() => {
+    if (tableId && !locationTables.some((table) => table.id === tableId)) {
+      setTableId(null);
+    }
+  }, [tableId, locationTables, setTableId]);
+
   const refreshTables = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase
@@ -130,6 +207,11 @@ export function PosTerminal({
       .order("label", { ascending: true });
     setTables((data as RestaurantTable[]) ?? []);
   }, [userId]);
+
+  const refreshPosData = useCallback(() => {
+    void refreshTables();
+    void refreshMenu();
+  }, [refreshTables, refreshMenu]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -145,7 +227,7 @@ export function PosTerminal({
   useShopRealtime({
     userId,
     locationId: selectedLocationId,
-    onChange: refreshTables,
+    onChange: refreshPosData,
   });
 
   function handleItemTap(item: MenuItemWithGroups) {
@@ -205,6 +287,16 @@ export function PosTerminal({
     const clientGeneratedId = crypto.randomUUID();
 
     try {
+      if (navigator.onLine) {
+        const supabase = createClient();
+        await assertRecipeStockForCart({
+          supabase,
+          userId,
+          locationId: selectedLocationId,
+          items: cartItems,
+        });
+      }
+
       await enqueueOfflineOrder({
         client_generated_id: clientGeneratedId,
         user_id: userId,
@@ -259,6 +351,7 @@ export function PosTerminal({
       const message =
         err instanceof Error ? err.message : "Could not submit order";
       toast.error(message);
+      if (err instanceof RecipeStockError) router.push(ROUTES.inventory);
     } finally {
       setSubmitting(false);
     }
@@ -373,7 +466,7 @@ export function PosTerminal({
               >
                 All
               </Button>
-              {categories.map((category) => (
+              {menuCategories.map((category) => (
                 <Button
                   key={category.id}
                   type="button"
@@ -497,17 +590,19 @@ export function PosTerminal({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-9"
-                disabled={submitting || cartItems.length === 0}
-                onClick={() => commitOrder("send_to_kitchen", null)}
-              >
-                <Send className="size-4" />
-                Kitchen
-              </Button>
+            <div className={kdsEnabled ? "grid grid-cols-2 gap-2" : "grid gap-2"}>
+              {kdsEnabled ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-9"
+                  disabled={submitting || cartItems.length === 0}
+                  onClick={() => commitOrder("send_to_kitchen", null)}
+                >
+                  <Send className="size-4" />
+                  Kitchen
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 className="min-h-9"
@@ -544,6 +639,7 @@ export function PosTerminal({
         open={addCustomerOpen}
         onOpenChange={setAddCustomerOpen}
         userId={userId}
+        locationId={selectedLocationId}
         customer={null}
         showLoyalty={false}
         onSaved={handleCustomerSaved}

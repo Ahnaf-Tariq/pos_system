@@ -8,19 +8,31 @@ import type {
   ModifierGroupWithOptions,
 } from '@/types/interfaces'
 
-export async function fetchMenuCatalog(supabase: SupabaseClient, userId: string) {
+export async function fetchMenuCatalog(
+  supabase: SupabaseClient,
+  userId: string,
+  locationId?: string | null
+) {
   const [{ data: categories, error: categoriesError }, { data: items, error: itemsError }] =
     await Promise.all([
-      supabase
-        .from('categories')
-        .select('*')
-        .eq('user_id', userId)
-        .order('sort_order', { ascending: true }),
-      supabase
-        .from('menu_items')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false }),
+      (() => {
+        let query = supabase
+          .from('categories')
+          .select('*')
+          .eq('user_id', userId)
+          .order('sort_order', { ascending: true })
+        if (locationId) query = query.eq('location_id', locationId)
+        return query
+      })(),
+      (() => {
+        let query = supabase
+          .from('menu_items')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+        if (locationId) query = query.eq('location_id', locationId)
+        return query
+      })(),
     ])
 
   if (categoriesError) throw new Error(categoriesError.message)

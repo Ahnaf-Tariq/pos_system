@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { fetchMenuCatalog } from "@/lib/menu/catalog";
 import type { Category, MenuItemWithGroups } from "@/types/interfaces";
 import { formatMoney, cn } from "@/lib/utils";
+import { useLocationContext } from "@/components/dashboard/location-provider";
 import { useRealtimeRefresh } from "@/hooks/use-realtime-refresh";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ export function MenuManager({
   initialCategories,
   initialItems,
 }: MenuManagerProps) {
+  const { selectedLocationId } = useLocationContext();
   const [categories, setCategories] = useState(initialCategories);
   const [items, setItems] = useState(initialItems);
   const [selectedCategoryId, setSelectedCategoryId] = useState<
@@ -64,21 +66,39 @@ export function MenuManager({
   }, [items, selectedCategoryId]);
 
   async function refresh() {
+    if (!selectedLocationId) {
+      setCategories([]);
+      setItems([]);
+      return;
+    }
     const supabase = createClient();
-    const catalog = await fetchMenuCatalog(supabase, userId);
+    const catalog = await fetchMenuCatalog(
+      supabase,
+      userId,
+      selectedLocationId,
+    );
     setCategories(catalog.categories);
     setItems(catalog.items);
   }
+
+  useEffect(() => {
+    void refresh();
+  }, [selectedLocationId, userId]);
 
   useRealtimeRefresh({
     userId,
     tables: ["categories", "menu_items", "modifier_groups", "modifiers"],
     onChange: () => void refresh(),
+    enabled: Boolean(selectedLocationId),
   });
 
   async function createCategory() {
     const name = newCategoryName.trim();
     if (!name) return;
+    if (!selectedLocationId) {
+      toast.error("Select a location in the header first");
+      return;
+    }
     const supabase = createClient();
     const nextOrder =
       categories.reduce(
@@ -88,6 +108,7 @@ export function MenuManager({
 
     const { error: insertError } = await supabase.from("categories").insert({
       user_id: userId,
+      location_id: selectedLocationId,
       name,
       sort_order: nextOrder,
     });
@@ -263,6 +284,10 @@ export function MenuManager({
   }
 
   function openCreateItem() {
+    if (!selectedLocationId) {
+      toast.error("Select a location in the header first");
+      return;
+    }
     setEditingItem(null);
     setEditorOpen(true);
   }
@@ -308,7 +333,12 @@ export function MenuManager({
                 }
               }}
             />
-            <Button type="button" variant="outline" onClick={createCategory}>
+            <Button
+              size={"sm"}
+              type="button"
+              variant="outline"
+              onClick={createCategory}
+            >
               Add
             </Button>
           </div>
@@ -502,6 +532,7 @@ export function MenuManager({
         open={editorOpen}
         onOpenChange={setEditorOpen}
         userId={userId}
+        locationId={selectedLocationId}
         currency={currency}
         categories={sortedCategories}
         item={editingItem}

@@ -8,11 +8,12 @@ import {
   bumpTicket,
   deriveTicketStage,
   formatElapsed,
+  markPaidTicketServed,
   nextKdsStatus,
   settleTicketAsPaid,
 } from '@/lib/kds/tickets'
 import type { KdsTicket, KdsTicketItem } from '@/types/interfaces'
-import { KdsStatus, type PaymentMethod } from '@/types/enums'
+import { KdsStatus, OrderStatus, type PaymentMethod } from '@/types/enums'
 import { PaymentModal } from '@/components/pos/payment-modal'
 import { openThermalReceipt } from '@/lib/receipts/open-thermal'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ export function OrderCard({
   const [busy, setBusy] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const next = nextKdsStatus(ticket.stage)
+  const isPaid = ticket.order.status === OrderStatus.PAID
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000)
@@ -54,6 +56,19 @@ export function OrderCard({
     if (!next) return
 
     if (next === KdsStatus.SERVED) {
+      if (isPaid) {
+        setBusy(true)
+        try {
+          const supabase = createClient()
+          await markPaidTicketServed(supabase, userId, ticket.order.id)
+          onChanged()
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Could not mark served')
+        } finally {
+          setBusy(false)
+        }
+        return
+      }
       setPaymentOpen(true)
       return
     }
@@ -78,6 +93,19 @@ export function OrderCard({
       row.id === item.id ? { ...row, kds_status: itemNext } : row
     )
     if (deriveTicketStage(previewItems) === KdsStatus.SERVED) {
+      if (isPaid) {
+        setBusy(true)
+        try {
+          const supabase = createClient()
+          await markPaidTicketServed(supabase, userId, ticket.order.id)
+          onChanged()
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Could not bump item')
+        } finally {
+          setBusy(false)
+        }
+        return
+      }
       setPaymentOpen(true)
       return
     }
@@ -216,7 +244,9 @@ export function OrderCard({
             onClick={() => void handleBumpTicket()}
           >
             {next === KdsStatus.SERVED
-              ? 'Serve & take payment'
+              ? isPaid
+                ? 'Mark served'
+                : 'Serve & take payment'
               : `Bump ticket → ${next}`}
           </Button>
         ) : (

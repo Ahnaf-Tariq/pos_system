@@ -64,7 +64,7 @@ const MODULES = [
   {
     title: "Orders & reports",
     description:
-      "Full history, voids, and day/hour sales so you know what’s working before tomorrow’s prep.",
+      "Full history, cancels, and day/hour sales so you know what’s working before tomorrow’s prep.",
     icon: BarChart3,
   },
   {

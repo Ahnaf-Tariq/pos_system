@@ -12,7 +12,7 @@ export async function fetchShopSettings(
         .from('locations')
         .select('*')
         .eq('user_id', userId)
-        .order('created_at', { ascending: true }),
+        .order('created_at', { ascending: false }),
     ])
 
   if (shopError || !shop) throw new Error(shopError?.message ?? 'Shop not found')
@@ -22,6 +22,7 @@ export async function fetchShopSettings(
     shop: {
       ...(shop as Shop),
       tax_rate: Number((shop as Shop).tax_rate ?? 0),
+      kds_enabled: (shop as Shop).kds_enabled !== false,
     },
     locations: ((locations as Location[]) ?? []).map((location) => ({
       ...location,

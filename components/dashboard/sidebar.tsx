@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 interface DashboardSidebarProps {
   businessName: string;
   role: StaffRole;
+  kdsEnabled?: boolean;
   collapsed: boolean;
   onToggle: () => void;
 }
@@ -19,11 +20,12 @@ interface DashboardSidebarProps {
 export function DashboardSidebar({
   businessName,
   role,
+  kdsEnabled = true,
   collapsed,
   onToggle,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const items = getNavItemsForRole(role);
+  const items = getNavItemsForRole(role, { kdsEnabled });
 
   return (
     <aside

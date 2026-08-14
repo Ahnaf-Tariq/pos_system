@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { Controller, useForm } from "react-hook-form";
 import { Select } from "antd";
@@ -44,6 +45,7 @@ interface SettingsManagerProps {
 }
 
 export function SettingsManager({ userId }: SettingsManagerProps) {
+  const router = useRouter();
   const [shop, setShop] = useState<Shop | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,6 +92,7 @@ export function SettingsManager({ userId }: SettingsManagerProps) {
             data.shop.salary_pay_basis === SalaryPayBasis.DAILY
               ? SalaryPayBasis.DAILY
               : SalaryPayBasis.MONTHLY,
+          kds_enabled: data.shop.kds_enabled !== false,
         });
         receiptForm.reset({
           receipt_footer: data.shop.receipt_footer ?? "",
@@ -127,6 +130,7 @@ export function SettingsManager({ userId }: SettingsManagerProps) {
         currency: values.currency.toUpperCase(),
         tax_rate: values.tax_rate,
         salary_pay_basis: values.salary_pay_basis,
+        kds_enabled: values.kds_enabled,
       })
       .eq("user_id", userId);
 
@@ -136,6 +140,7 @@ export function SettingsManager({ userId }: SettingsManagerProps) {
     }
     toast.success("Business profile saved");
     await refresh();
+    router.refresh();
   }
 
   async function saveReceipt(values: ReceiptSettingsInput) {
@@ -388,6 +393,28 @@ export function SettingsManager({ userId }: SettingsManagerProps) {
             <p className="text-xs text-muted-foreground">
               Default is monthly if unset. Controls Pay Salary periods on Staff.
             </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="kds_enabled">Kitchen display</Label>
+            <Controller
+              name="kds_enabled"
+              control={profileForm.control}
+              render={({ field }) => (
+                <label
+                  htmlFor="kds_enabled"
+                  className="flex min-h-8 items-center justify-between gap-3 rounded-md border border-border px-3"
+                >
+                  <span className="text-sm text-muted-foreground">
+                    Send POS orders to KDS and show it in the sidebar
+                  </span>
+                  <Switch
+                    id="kds_enabled"
+                    checked={field.value !== false}
+                    onCheckedChange={field.onChange}
+                  />
+                </label>
+              )}
+            />
           </div>
           <div className="sm:col-span-2">
             <Button type="submit" disabled={profileForm.formState.isSubmitting}>

@@ -4,18 +4,21 @@ import { OrderStatus } from '@/types/enums'
 
 export async function fetchCustomersWithStats(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  locationId: string
 ): Promise<CustomerStats[]> {
   const [{ data: customers, error }, { data: orders }] = await Promise.all([
     supabase
       .from('customers')
       .select('*')
       .eq('user_id', userId)
-      .order('full_name', { ascending: true }),
+      .eq('location_id', locationId)
+      .order('created_at', { ascending: false }),
     supabase
       .from('orders')
       .select('customer_id, grand_total, status')
       .eq('user_id', userId)
+      .eq('location_id', locationId)
       .not('customer_id', 'is', null),
   ])
 
@@ -46,9 +49,10 @@ export async function fetchCustomersWithStats(
 export async function fetchCustomerOrders(
   supabase: SupabaseClient,
   userId: string,
-  customerId: string
+  customerId: string,
+  locationId?: string | null
 ): Promise<Order[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .select('*')
     .eq('user_id', userId)
@@ -56,6 +60,9 @@ export async function fetchCustomerOrders(
     .order('created_at', { ascending: false })
     .limit(50)
 
+  if (locationId) query = query.eq('location_id', locationId)
+
+  const { data, error } = await query
   if (error) throw new Error(error.message)
   return ((data as Order[]) ?? []).map((order) => ({
     ...order,
@@ -68,12 +75,14 @@ export async function fetchCustomerOrders(
 
 export async function fetchCustomersList(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  locationId: string
 ): Promise<Customer[]> {
   const { data, error } = await supabase
     .from('customers')
     .select('*')
     .eq('user_id', userId)
+    .eq('location_id', locationId)
     .order('full_name', { ascending: true })
 
   if (error) throw new Error(error.message)
