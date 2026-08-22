@@ -63,8 +63,8 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
   const [status, setStatus] = useState<OrderStatus | "all">("all");
   const [orderType, setOrderType] = useState<OrderType | "all">("all");
   const [staffAuthId, setStaffAuthId] = useState<string | "all">("all");
-  const [fromDate, setFromDate] = useState(daysAgoInput(7));
-  const [toDate, setToDate] = useState(todayInput());
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [busy, setBusy] = useState(false);

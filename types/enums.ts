@@ -69,3 +69,10 @@ export enum SalaryPayBasis {
   MONTHLY = "monthly",
   DAILY = "daily",
 }
+
+export enum AttendanceStatus {
+  PRESENT = "present",
+  ABSENT = "absent",
+  LEAVE = "leave",
+  HALF_DAY = "half_day",
+}

@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { AppRoute } from "@/lib/routes";
+import type { InviteStaffInput } from "@/lib/validations/staff";
 import type {
   AccountStatus,
   BusinessType,
@@ -12,6 +13,7 @@ import type {
   StaffRole,
   SubscriptionPlan,
   TableStatus,
+  AttendanceStatus,
 } from "@/types/enums";
 
 export interface Shop {
@@ -55,7 +57,7 @@ export interface Profile {
 export interface StaffMember {
   id: string;
   user_id: string;
-  auth_id: string;
+  auth_id: string | null;
   location_id: string | null;
   role: StaffRole;
   is_active: boolean;
@@ -68,6 +70,22 @@ export interface StaffMember {
 
 export interface StaffMemberView extends StaffMember {
   location_name: string | null;
+}
+
+export interface LocationOption {
+  id: string;
+  name: string;
+}
+
+export interface StaffFormModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: "add" | "edit";
+  member?: StaffMemberView | null;
+  locations: LocationOption[];
+  roleOptions: StaffRole[];
+  defaultLocationId: string;
+  onSubmit: (values: InviteStaffInput) => Promise<void>;
 }
 
 export interface PlatformAdmin {
@@ -356,6 +374,27 @@ export interface StaffDetailData {
   currentPeriodPaid: boolean;
 }
 
+export interface StaffAttendance {
+  id: string;
+  user_id: string;
+  staff_member_id: string;
+  work_date: string;
+  status: AttendanceStatus;
+  marked_by: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AttendancePeriodSummary {
+  present: number;
+  halfDay: number;
+  absent: number;
+  leave: number;
+  unmarked: number;
+  presentEquivalent: number;
+}
+
 export interface AddStaffResult {
   ok: boolean;
   message: string;
@@ -396,8 +435,8 @@ export interface DashboardOverview {
 
 export interface ReportFilters {
   locationId?: string | null;
-  fromDate: string;
-  toDate: string;
+  fromDate?: string | null;
+  toDate?: string | null;
 }
 
 export interface DaySalesPoint {

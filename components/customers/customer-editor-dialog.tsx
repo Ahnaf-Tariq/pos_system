@@ -139,7 +139,7 @@ export function CustomerEditorDialog({
             Store contact details{showLoyalty ? " and loyalty points" : ""}.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSave)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSave)} className="grid grid-cols-2 gap-2">
           <div className="space-y-2">
             <Label htmlFor="customer-full_name">Full name</Label>
             <Input
@@ -153,24 +153,23 @@ export function CustomerEditorDialog({
               </p>
             ) : null}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="customer-phone">Phone</Label>
-              <Input
-                id="customer-phone"
-                placeholder="Enter phone number..."
-                {...register("phone")}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="customer-email">Email</Label>
-              <Input
-                id="customer-email"
-                type="email"
-                placeholder="Enter email..."
-                {...register("email")}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="customer-phone">Phone</Label>
+            <Input
+              id="customer-phone"
+              type="tel"
+              placeholder="Enter phone number..."
+              {...register("phone")}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="customer-email">Email</Label>
+            <Input
+              id="customer-email"
+              type="email"
+              placeholder="Enter email..."
+              {...register("email")}
+            />
           </div>
           {showLoyalty ? (
             <div className="space-y-2">
@@ -184,7 +183,7 @@ export function CustomerEditorDialog({
               />
             </div>
           ) : null}
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="customer-notes">Notes</Label>
             <Textarea
               id="customer-notes"
@@ -194,7 +193,7 @@ export function CustomerEditorDialog({
               {...register("notes")}
             />
           </div>
-          <DialogFooter>
+          <DialogFooter className="sm:col-span-2">
             <Button
               type="button"
               variant="outline"

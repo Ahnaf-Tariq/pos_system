@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Modal, Select } from "antd";
 import { createClient } from "@/lib/supabase/client";
-import type { StaffMemberView } from "@/types/interfaces";
+import type { AttendancePeriodSummary, StaffMemberView } from "@/types/interfaces";
 import {
   currentSalaryPeriodKey,
   fetchSalaryPaymentsForPeriod,
@@ -12,6 +12,13 @@ import {
   payStaffSalary,
   salaryPeriodLabel,
 } from "@/lib/staff/salary";
+import {
+  fetchAttendanceForStaffRange,
+  periodAttendanceWindow,
+  shopDateKey,
+  shopTodayKey,
+  summarizeAttendance,
+} from "@/lib/staff/attendance";
 import { SalaryPayBasis, StaffRole } from "@/types/enums";
 import { formatMoney } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
@@ -24,6 +31,7 @@ interface PaySalaryModalProps {
   userId: string;
   actorAuthId: string;
   currency: string;
+  timezone: string;
   staff: StaffMemberView[];
   onPaid: () => void;
   defaultStaffMemberId?: string;
@@ -36,6 +44,7 @@ export function PaySalaryModal({
   userId,
   actorAuthId,
   currency,
+  timezone,
   staff,
   onPaid,
   defaultStaffMemberId,
@@ -48,6 +57,8 @@ export function PaySalaryModal({
   const [notes, setNotes] = useState("");
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [attendanceHint, setAttendanceHint] =
+    useState<AttendancePeriodSummary | null>(null);
 
   const activeStaff = useMemo(
     () =>
@@ -96,6 +107,45 @@ export function PaySalaryModal({
       }
     })();
   }, [open, userId, defaultStaffMemberId]);
+
+  useEffect(() => {
+    if (!open || !staffMemberId || !periodKey) {
+      setAttendanceHint(null);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const member = activeStaff.find((row) => row.id === staffMemberId);
+        const joinedKey = member
+          ? shopDateKey(timezone, member.created_at)
+          : undefined;
+        const { fromDate, toDate } = periodAttendanceWindow({
+          payBasis,
+          periodKey,
+          todayKey: shopTodayKey(timezone),
+          joinedKey,
+        });
+        if (fromDate > toDate) {
+          setAttendanceHint(null);
+          return;
+        }
+        const rows = await fetchAttendanceForStaffRange(
+          supabase,
+          userId,
+          staffMemberId,
+          fromDate,
+          toDate,
+        );
+        setAttendanceHint(
+          summarizeAttendance({ rows, fromDate, toDate }),
+        );
+      } catch {
+        setAttendanceHint(null);
+      }
+    })();
+  }, [open, staffMemberId, periodKey, payBasis, userId, timezone, activeStaff]);
 
   const staffOptions = activeStaff.map((member) => {
     const isPaid = paidStaffIds.has(member.id);
@@ -205,6 +255,16 @@ export function PaySalaryModal({
             value={selected ? formatMoney(salaryAmount, currency) : ""}
             placeholder="Select staff to see salary"
           />
+          {attendanceHint && selected ? (
+            <p className="text-xs text-muted-foreground">
+              Attendance this period: {attendanceHint.present} present,{" "}
+              {attendanceHint.halfDay} half-day, {attendanceHint.absent} absent,{" "}
+              {attendanceHint.leave} leave, {attendanceHint.unmarked} unmarked
+              ({attendanceHint.presentEquivalent} present-day
+              {attendanceHint.presentEquivalent === 1 ? "" : "s"} counted). Pay
+              amount is not changed by attendance.
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-2">

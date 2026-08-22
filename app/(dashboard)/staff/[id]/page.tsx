@@ -49,6 +49,7 @@ export default async function StaffDetailPage({
       staffId={id}
       currency={session.shop.currency}
       payBasis={payBasis}
+      timezone={session.shop.timezone}
       initialData={detail}
     />
   );

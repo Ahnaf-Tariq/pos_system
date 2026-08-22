@@ -10,7 +10,7 @@ import type { AddStaffResult } from '@/types/interfaces'
 
 /** @deprecated Use addStaffAction */
 export async function inviteStaffAction(input: {
-  email: string
+  email?: string
   fullName: string
   phone?: string
   role: string
@@ -24,7 +24,7 @@ export async function inviteStaffAction(input: {
 }
 
 export async function addStaffAction(input: {
-  email: string
+  email?: string
   fullName: string
   phone?: string
   role: string
@@ -55,69 +55,73 @@ export async function addStaffAction(input: {
     return { ok: false, message: 'You cannot assign that role' }
   }
 
-  const phone = parsed.data.phone?.trim() || null
-  const email = parsed.data.email.trim().toLowerCase()
+  const phone = parsed.data.phone.trim()
+  const email = parsed.data.email?.trim().toLowerCase() || null
   const fullName = parsed.data.fullName.trim()
 
   try {
     const admin = createAdminClient()
     const origin = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
 
-    const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(
-      email,
-      {
-        data: {
-          full_name: fullName,
-          phone,
-        },
-        redirectTo: `${origin}/login`,
-      }
-    )
-
-    let authId = invited?.user?.id
+    let authId: string | null = null
     let linkedExisting = false
 
-    if (inviteError || !authId) {
-      const { data: listed, error: listError } = await admin.auth.admin.listUsers({
-        page: 1,
-        perPage: 200,
-      })
-      if (listError) {
-        return { ok: false, message: inviteError?.message ?? listError.message }
-      }
-
-      const existing = listed.users.find(
-        (row) => row.email?.toLowerCase() === email
-      )
-      if (!existing) {
-        return {
-          ok: false,
-          message: inviteError?.message ?? 'Could not add staff',
+    if (email) {
+      const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(
+        email,
+        {
+          data: {
+            full_name: fullName,
+            phone,
+          },
+          redirectTo: `${origin}/login`,
         }
+      )
+
+      authId = invited?.user?.id ?? null
+
+      if (inviteError || !authId) {
+        const { data: listed, error: listError } = await admin.auth.admin.listUsers({
+          page: 1,
+          perPage: 200,
+        })
+        if (listError) {
+          return { ok: false, message: inviteError?.message ?? listError.message }
+        }
+
+        const existing = listed.users.find(
+          (row) => row.email?.toLowerCase() === email
+        )
+        if (!existing) {
+          return {
+            ok: false,
+            message: inviteError?.message ?? 'Could not add staff',
+          }
+        }
+        authId = existing.id
+        linkedExisting = true
       }
-      authId = existing.id
-      linkedExisting = true
-    }
 
-    const { error: profileError } = await admin.from('profiles').upsert({
-      id: authId,
-      full_name: fullName,
-      phone,
-      email,
-    })
-
-    // profiles.email may not exist until migration 008 — still save name/phone
-    if (profileError?.message?.toLowerCase().includes('email')) {
-      const { error: profileFallbackError } = await admin.from('profiles').upsert({
+      const { error: profileError } = await admin.from('profiles').upsert({
         id: authId,
         full_name: fullName,
         phone,
+        email,
       })
-      if (profileFallbackError) {
-        return { ok: false, message: profileFallbackError.message }
+
+      // profiles.email may not exist until migration 008 — still save name/phone
+      if (profileError?.message?.toLowerCase().includes('email')) {
+        const { error: profileFallbackError } = await admin.from('profiles').upsert({
+          id: authId,
+          full_name: fullName,
+          phone,
+        })
+        if (profileFallbackError) {
+          return { ok: false, message: profileFallbackError.message }
+        }
+      } else if (profileError) {
+        return { ok: false, message: profileError.message }
       }
-    } else if (profileError) {
-      return { ok: false, message: profileError.message }
     }
 
     const staffFields = {
@@ -130,12 +134,14 @@ export async function addStaffAction(input: {
       salary: Number(parsed.data.salary) || 0,
     }
 
-    const { data: existingStaff } = await admin
-      .from('staff_members')
-      .select('id')
-      .eq('user_id', session.shop.user_id)
-      .eq('auth_id', authId)
-      .maybeSingle()
+    const { data: existingStaff } = authId
+      ? await admin
+          .from('staff_members')
+          .select('id')
+          .eq('user_id', session.shop.user_id)
+          .eq('auth_id', authId)
+          .maybeSingle()
+      : { data: null }
 
     if (existingStaff) {
       const { error: updateError } = await admin

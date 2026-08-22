@@ -78,15 +78,20 @@ export async function fetchReportBundle(
   filters: ReportFilters & { period?: SalesPeriod }
 ): Promise<ReportBundle> {
   const period = filters.period ?? 'daily'
-  const fromBound = localDayBoundsISO(filters.fromDate)
-  const toBound = localDayBoundsISO(filters.toDate)
   let query = supabase
     .from('orders')
     .select('*')
     .eq('user_id', userId)
-    .gte('created_at', fromBound.start)
-    .lte('created_at', toBound.end)
     .order('created_at', { ascending: false })
+
+  if (filters.fromDate) {
+    const fromBound = localDayBoundsISO(filters.fromDate)
+    query = query.gte('created_at', fromBound.start)
+  }
+  if (filters.toDate) {
+    const toBound = localDayBoundsISO(filters.toDate)
+    query = query.lte('created_at', toBound.end)
+  }
 
   if (filters.locationId) query = query.eq('location_id', filters.locationId)
 

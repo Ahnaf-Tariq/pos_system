@@ -33,7 +33,9 @@ export async function fetchStaffMembers(
     needsProfileFallback
       ? loadProfilesByAuthId(
           supabase,
-          members.map((member) => member.auth_id)
+          members
+            .map((member) => member.auth_id)
+            .filter((id): id is string => Boolean(id))
         )
       : Promise.resolve(
           new Map<
@@ -48,7 +50,7 @@ export async function fetchStaffMembers(
   )
 
   const views = members.map((member) => {
-    const profile = profileById.get(member.auth_id)
+    const profile = member.auth_id ? profileById.get(member.auth_id) : undefined
     return {
       ...member,
       salary: Number(member.salary ?? 0),

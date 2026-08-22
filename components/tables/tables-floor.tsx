@@ -1,26 +1,23 @@
-'use client'
+"use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import toast from 'react-hot-toast'
-import { useRouter } from 'next/navigation'
-import { ArrowRightLeft, Plus } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import {
-  fetchTablesWithOrders,
-  tableStatusStyles,
-} from '@/lib/tables/floor'
-import type { TableWithOrder } from '@/types/interfaces'
-import { useShopRealtime } from '@/hooks/use-shop-realtime'
-import { useLocationContext } from '@/components/dashboard/location-provider'
-import { OrderStatus, TableStatus } from '@/types/enums'
-import { ROUTES } from '@/lib/routes'
-import { formatMoney, formatOrderStatus, cn } from '@/lib/utils'
-import { Select } from 'antd'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { AppLoader } from '@/components/ui/app-loader'
+import { useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
+import { ArrowRightLeft, Plus } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { fetchTablesWithOrders, tableStatusStyles } from "@/lib/tables/floor";
+import type { TableWithOrder } from "@/types/interfaces";
+import { useShopRealtime } from "@/hooks/use-shop-realtime";
+import { useLocationContext } from "@/components/dashboard/location-provider";
+import { OrderStatus, TableStatus } from "@/types/enums";
+import { ROUTES } from "@/lib/routes";
+import { formatMoney, formatOrderStatus, cn } from "@/lib/utils";
+import { Select } from "antd";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { AppLoader } from "@/components/ui/app-loader";
 import {
   Dialog,
   DialogContent,
@@ -28,279 +25,338 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { ConfirmModal } from '@/components/ui/confirm-modal'
+} from "@/components/ui/dialog";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 
 interface TablesFloorProps {
-  userId: string
-  currency: string
+  userId: string;
+  currency: string;
 }
 
-const STATUS_OPTIONS: TableStatus[] = [
-  TableStatus.AVAILABLE,
-  TableStatus.OCCUPIED,
-  TableStatus.RESERVED,
-  TableStatus.DIRTY,
-]
+const STATUS_FILTERS: Array<{
+  status: TableStatus;
+  label: string;
+  swatch: string;
+  active: string;
+}> = [
+  {
+    status: TableStatus.AVAILABLE,
+    label: "Available",
+    swatch: "bg-blue-100/10 border-blue-500",
+    active: "border-blue-500 bg-blue-100/10 text-foreground",
+  },
+  {
+    status: TableStatus.OCCUPIED,
+    label: "Occupied",
+    swatch: "bg-primary/15 border-primary/60",
+    active: "border-primary/60 bg-primary/15 text-foreground",
+  },
+  {
+    status: TableStatus.RESERVED,
+    label: "Reserved",
+    swatch: "bg-warning/15 border-warning/50",
+    active: "border-warning/50 bg-warning/15 text-foreground",
+  },
+  {
+    status: TableStatus.DIRTY,
+    label: "Dirty",
+    swatch: "bg-destructive/15 border-destructive/50",
+    active: "border-destructive/50 bg-destructive/15 text-foreground",
+  },
+];
+
+const STATUS_OPTIONS = STATUS_FILTERS.map((item) => item.status);
 
 export function TablesFloor({ userId, currency }: TablesFloorProps) {
-  const router = useRouter()
-  const { selectedLocationId, selectedLocation } = useLocationContext()
-  const [tables, setTables] = useState<TableWithOrder[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<TableWithOrder | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [transferOpen, setTransferOpen] = useState(false)
-  const [mergeOpen, setMergeOpen] = useState(false)
-  const [label, setLabel] = useState('')
-  const [seats, setSeats] = useState('4')
-  const [targetTableId, setTargetTableId] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleteLoading, setDeleteLoading] = useState(false)
+  const router = useRouter();
+  const { selectedLocationId, selectedLocation } = useLocationContext();
+  const [tables, setTables] = useState<TableWithOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<TableWithOrder | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const [seats, setSeats] = useState("4");
+  const [targetTableId, setTargetTableId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [statusFilters, setStatusFilters] = useState<TableStatus[]>([]);
 
-  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!selectedLocationId) {
-      setTables([])
-      setLoading(false)
-      return
-    }
-    if (!opts?.silent) setLoading(true)
-    try {
-      const supabase = createClient()
-      const rows = await fetchTablesWithOrders(supabase, userId, selectedLocationId)
-      setTables(rows)
-      setSelected((current) =>
-        current ? rows.find((row) => row.id === current.id) ?? null : null
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not load tables'
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedLocationId, userId])
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!selectedLocationId) {
+        setTables([]);
+        setLoading(false);
+        return;
+      }
+      if (!opts?.silent) setLoading(true);
+      try {
+        const supabase = createClient();
+        const rows = await fetchTablesWithOrders(
+          supabase,
+          userId,
+          selectedLocationId,
+        );
+        setTables(rows);
+        setSelected((current) =>
+          current ? (rows.find((row) => row.id === current.id) ?? null) : null,
+        );
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Could not load tables";
+        toast.error(message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [selectedLocationId, userId],
+  );
 
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    void refresh();
+  }, [refresh]);
 
   useShopRealtime({
     userId,
     locationId: selectedLocationId,
     onChange: () => void refresh({ silent: true }),
-  })
+  });
+
+  const visibleTables = useMemo(() => {
+    if (statusFilters.length === 0) return tables;
+    return tables.filter((table) =>
+      statusFilters.includes(table.status as TableStatus),
+    );
+  }, [tables, statusFilters]);
+
+  function toggleStatusFilter(status: TableStatus) {
+    setStatusFilters((current) =>
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status],
+    );
+  }
 
   const otherOccupied = useMemo(
     () =>
       tables.filter(
         (table) =>
           table.id !== selected?.id &&
-          (table.activeOrder || table.status === TableStatus.OCCUPIED)
+          (table.activeOrder || table.status === TableStatus.OCCUPIED),
       ),
-    [tables, selected]
-  )
+    [tables, selected],
+  );
 
   const transferTargets = useMemo(
     () =>
       tables.filter(
         (table) =>
           table.id !== selected?.id &&
-          (table.status === TableStatus.AVAILABLE || !table.activeOrder)
+          (table.status === TableStatus.AVAILABLE || !table.activeOrder),
       ),
-    [tables, selected]
-  )
+    [tables, selected],
+  );
 
   async function createTable() {
-    if (!selectedLocationId || !label.trim()) return
-    setBusy(true)
-    const supabase = createClient()
-    const { error: insertError } = await supabase.from('restaurant_tables').insert({
-      user_id: userId,
-      location_id: selectedLocationId,
-      label: label.trim(),
-      seats: Math.max(1, Number(seats) || 4),
-      status: TableStatus.AVAILABLE,
-    })
-    setBusy(false)
+    if (!selectedLocationId || !label.trim()) return;
+    setBusy(true);
+    const supabase = createClient();
+    const { error: insertError } = await supabase
+      .from("restaurant_tables")
+      .insert({
+        user_id: userId,
+        location_id: selectedLocationId,
+        label: label.trim(),
+        seats: Math.max(1, Number(seats) || 4),
+        status: TableStatus.AVAILABLE,
+      });
+    setBusy(false);
     if (insertError) {
-      toast.error(insertError.message)
-      return
+      toast.error(insertError.message);
+      return;
     }
-    setCreateOpen(false)
-    setLabel('')
-    setSeats('4')
-    toast.success('Table created')
-    await refresh()
+    setCreateOpen(false);
+    setLabel("");
+    setSeats("4");
+    toast.success("Table created");
+    await refresh();
   }
 
   async function updateStatus(status: TableStatus) {
-    if (!selected) return
-    setBusy(true)
-    const supabase = createClient()
+    if (!selected) return;
+    setBusy(true);
+    const supabase = createClient();
     const { error: updateError } = await supabase
-      .from('restaurant_tables')
+      .from("restaurant_tables")
       .update({ status })
-      .eq('id', selected.id)
-      .eq('user_id', userId)
-    setBusy(false)
+      .eq("id", selected.id)
+      .eq("user_id", userId);
+    setBusy(false);
     if (updateError) {
-      toast.error(updateError.message)
-      return
+      toast.error(updateError.message);
+      return;
     }
 
     if (
       status === TableStatus.AVAILABLE &&
       selected.status !== TableStatus.AVAILABLE
     ) {
-      const { notifyTableFreed } = await import('@/lib/notifications/create')
+      const { notifyTableFreed } = await import("@/lib/notifications/create");
       await notifyTableFreed(supabase, {
         userId,
         locationId: selected.location_id,
         tableId: selected.id,
         tableLabel: selected.label,
-      })
+      });
     }
 
-    toast.success('Table status updated')
-    await refresh()
+    toast.success("Table status updated");
+    await refresh();
   }
 
   async function confirmDeleteTable() {
-    if (!selected) return
-    setDeleteLoading(true)
-    const supabase = createClient()
+    if (!selected) return;
+    setDeleteLoading(true);
+    const supabase = createClient();
     const { error: deleteError } = await supabase
-      .from('restaurant_tables')
+      .from("restaurant_tables")
       .delete()
-      .eq('id', selected.id)
-      .eq('user_id', userId)
+      .eq("id", selected.id)
+      .eq("user_id", userId);
     if (deleteError) {
-      toast.error(deleteError.message)
+      toast.error(deleteError.message);
     } else {
-      setSelected(null)
-      toast.success('Table deleted')
-      setDeleteOpen(false)
-      await refresh()
+      setSelected(null);
+      toast.success("Table deleted");
+      setDeleteOpen(false);
+      await refresh();
     }
-    setDeleteLoading(false)
+    setDeleteLoading(false);
   }
 
   function openInPos(table: TableWithOrder) {
-    router.push(`${ROUTES.pos}?tableId=${table.id}`)
+    router.push(`${ROUTES.pos}?tableId=${table.id}`);
   }
 
   async function transferOrder() {
-    if (!selected?.activeOrder || !targetTableId) return
-    setBusy(true)
-    const supabase = createClient()
+    if (!selected?.activeOrder || !targetTableId) return;
+    setBusy(true);
+    const supabase = createClient();
 
     const { error: orderError } = await supabase
-      .from('orders')
+      .from("orders")
       .update({ table_id: targetTableId })
-      .eq('id', selected.activeOrder.id)
-      .eq('user_id', userId)
+      .eq("id", selected.activeOrder.id)
+      .eq("user_id", userId);
 
     if (orderError) {
-      setBusy(false)
-      toast.error(orderError.message)
-      return
+      setBusy(false);
+      toast.error(orderError.message);
+      return;
     }
 
     await supabase
-      .from('restaurant_tables')
+      .from("restaurant_tables")
       .update({ status: TableStatus.AVAILABLE })
-      .eq('id', selected.id)
-      .eq('user_id', userId)
+      .eq("id", selected.id)
+      .eq("user_id", userId);
 
     await supabase
-      .from('restaurant_tables')
+      .from("restaurant_tables")
       .update({ status: TableStatus.OCCUPIED })
-      .eq('id', targetTableId)
-      .eq('user_id', userId)
+      .eq("id", targetTableId)
+      .eq("user_id", userId);
 
-    const { notifyTableFreed } = await import('@/lib/notifications/create')
+    const { notifyTableFreed } = await import("@/lib/notifications/create");
     await notifyTableFreed(supabase, {
       userId,
       locationId: selected.location_id,
       tableId: selected.id,
       tableLabel: selected.label,
-    })
+    });
 
-    setBusy(false)
-    setTransferOpen(false)
-    setTargetTableId('')
-    toast.success('Order transferred')
-    await refresh()
+    setBusy(false);
+    setTransferOpen(false);
+    setTargetTableId("");
+    toast.success("Order transferred");
+    await refresh();
   }
 
   async function mergeOrders() {
-    if (!selected?.activeOrder || !targetTableId) return
-    const source = otherOccupied.find((table) => table.id === targetTableId)
+    if (!selected?.activeOrder || !targetTableId) return;
+    const source = otherOccupied.find((table) => table.id === targetTableId);
     if (!source?.activeOrder) {
-      const message = 'Pick an occupied table with an active order to merge from'
-      toast.error(message)
-      return
+      const message =
+        "Pick an occupied table with an active order to merge from";
+      toast.error(message);
+      return;
     }
 
-    setBusy(true)
-    const supabase = createClient()
+    setBusy(true);
+    const supabase = createClient();
 
     const { error: itemsError } = await supabase
-      .from('order_items')
+      .from("order_items")
       .update({ order_id: selected.activeOrder.id })
-      .eq('order_id', source.activeOrder.id)
-      .eq('user_id', userId)
+      .eq("order_id", source.activeOrder.id)
+      .eq("user_id", userId);
 
     if (itemsError) {
-      setBusy(false)
-      toast.error(itemsError.message)
-      return
+      setBusy(false);
+      toast.error(itemsError.message);
+      return;
     }
 
     const mergedTotal =
-      Number(selected.activeOrder.grand_total) + Number(source.activeOrder.grand_total)
+      Number(selected.activeOrder.grand_total) +
+      Number(source.activeOrder.grand_total);
 
     await supabase
-      .from('orders')
+      .from("orders")
       .update({
         grand_total: mergedTotal,
         subtotal: mergedTotal,
       })
-      .eq('id', selected.activeOrder.id)
-      .eq('user_id', userId)
+      .eq("id", selected.activeOrder.id)
+      .eq("user_id", userId);
 
     await supabase
-      .from('orders')
-      .update({ status: OrderStatus.VOID, table_id: null, closed_at: new Date().toISOString() })
-      .eq('id', source.activeOrder.id)
-      .eq('user_id', userId)
+      .from("orders")
+      .update({
+        status: OrderStatus.VOID,
+        table_id: null,
+        closed_at: new Date().toISOString(),
+      })
+      .eq("id", source.activeOrder.id)
+      .eq("user_id", userId);
 
     await supabase
-      .from('restaurant_tables')
+      .from("restaurant_tables")
       .update({ status: TableStatus.AVAILABLE })
-      .eq('id', source.id)
-      .eq('user_id', userId)
+      .eq("id", source.id)
+      .eq("user_id", userId);
 
     await supabase
-      .from('restaurant_tables')
+      .from("restaurant_tables")
       .update({ status: TableStatus.OCCUPIED })
-      .eq('id', selected.id)
-      .eq('user_id', userId)
+      .eq("id", selected.id)
+      .eq("user_id", userId);
 
-    const { notifyTableFreed } = await import('@/lib/notifications/create')
+    const { notifyTableFreed } = await import("@/lib/notifications/create");
     await notifyTableFreed(supabase, {
       userId,
       locationId: source.location_id,
       tableId: source.id,
       tableLabel: source.label,
-    })
+    });
 
-    setBusy(false)
-    setMergeOpen(false)
-    setTargetTableId('')
-    toast.success('Orders merged')
-    await refresh()
+    setBusy(false);
+    setMergeOpen(false);
+    setTargetTableId("");
+    toast.success("Orders merged");
+    await refresh();
   }
 
   return (
@@ -309,74 +365,120 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Tables</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Floor plan for {selectedLocation?.name ?? 'your location'} · live via Realtime
+            Floor plan for {selectedLocation?.name ?? "your location"} · live
+            via Realtime
           </p>
         </div>
         <div className="flex gap-2">
-          <Button type="button" onClick={() => setCreateOpen(true)} disabled={!selectedLocationId}>
+          <Button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            disabled={!selectedLocationId}
+          >
             <Plus className="size-4" />
             Add table
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-        <Legend color="bg-card border-border" label="Available" />
-        <Legend color="bg-primary/15 border-primary/60" label="Occupied" />
-        <Legend color="bg-warning/15 border-warning/50" label="Reserved" />
-        <Legend color="bg-destructive/15 border-destructive/50" label="Dirty" />
+      <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+        {STATUS_FILTERS.map((item) => {
+          const isActive = statusFilters.includes(item.status);
+          return (
+            <button
+              key={item.status}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => toggleStatusFilter(item.status)}
+              className={cn(
+                "inline-flex cursor-pointer items-center gap-1.5 rounded-md border p-1.5 transition",
+                isActive
+                  ? item.active
+                  : "border-transparent hover:border-border hover:text-foreground",
+              )}
+            >
+              <span className={`h-3 w-3 rounded-sm border ${item.swatch}`} />
+              {item.label}
+            </button>
+          );
+        })}
       </div>
 
       {!selectedLocationId ? (
-        <p className="text-sm text-muted-foreground">Select a location in the header.</p>
+        <p className="text-sm text-muted-foreground">
+          Select a location in the header.
+        </p>
       ) : loading ? (
         <AppLoader fullPage />
-      ) : tables.length === 0 ? (
+      ) : visibleTables.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center">
-          <p className="text-sm text-muted-foreground">No tables yet for this location.</p>
-          <Button className="mt-4" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4" />
-            Add first table
-          </Button>
+          <p className="text-sm text-muted-foreground">
+            {tables.length === 0
+              ? "No tables yet for this location."
+              : "No tables match the selected statuses."}
+          </p>
+          {tables.length === 0 ? (
+            <Button className="mt-4" onClick={() => setCreateOpen(true)}>
+              <Plus className="size-4" />
+              Add first table
+            </Button>
+          ) : (
+            <Button
+              className="mt-4"
+              variant="outline"
+              onClick={() => setStatusFilters([])}
+            >
+              Show all tables
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-          {tables.map((table) => (
+          {visibleTables.map((table) => (
             <button
               key={table.id}
               type="button"
               onClick={() => setSelected(table)}
               className={cn(
-                'min-h-[120px] rounded-xl border-2 p-4 text-left transition',
+                "min-h-[120px] rounded-xl border-2 p-4 text-left transition",
                 tableStatusStyles(table.status),
-                selected?.id === table.id && 'ring-2 ring-primary',
+                selected?.id === table.id && "ring-2 ring-primary",
               )}
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-lg font-semibold tracking-tight">{table.label}</p>
+                <p className="text-lg font-semibold tracking-tight">
+                  {table.label}
+                </p>
                 <Badge variant="outline" className="capitalize">
                   {table.status}
                 </Badge>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">{table.seats} seats</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {table.seats} seats
+              </p>
               {table.activeOrder ? (
                 <p className="money mt-3 text-sm">
                   {formatMoney(Number(table.activeOrder.grand_total), currency)}
                 </p>
               ) : (
-                <p className="mt-3 text-xs text-muted-foreground">No open order</p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  No open order
+                </p>
               )}
             </button>
           ))}
         </div>
       )}
 
-      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+      <Dialog
+        open={Boolean(selected)}
+        onOpenChange={(open) => !open && setSelected(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Table {selected?.label}</DialogTitle>
             <DialogDescription>
-              {selected?.seats} seats · status{' '}
+              {selected?.seats} seats · status{" "}
               <span className="capitalize">{selected?.status}</span>
             </DialogDescription>
           </DialogHeader>
@@ -385,7 +487,10 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
             <div className="rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm">
               <p className="text-muted-foreground">Active order</p>
               <p className="money mt-1">
-                {formatMoney(Number(selected.activeOrder.grand_total), currency)}
+                {formatMoney(
+                  Number(selected.activeOrder.grand_total),
+                  currency,
+                )}
               </p>
               <p className="mt-1 text-xs capitalize text-muted-foreground">
                 {formatOrderStatus(selected.activeOrder.status)}
@@ -398,7 +503,7 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
               <Button
                 key={status}
                 type="button"
-                variant={selected?.status === status ? 'default' : 'outline'}
+                variant={selected?.status === status ? "default" : "outline"}
                 className="min-h-11 capitalize"
                 disabled={busy}
                 onClick={() => void updateStatus(status)}
@@ -423,8 +528,8 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
                 className="min-h-11"
                 disabled={!selected?.activeOrder || busy}
                 onClick={() => {
-                  setTargetTableId('')
-                  setTransferOpen(true)
+                  setTargetTableId("");
+                  setTransferOpen(true);
                 }}
               >
                 <ArrowRightLeft className="size-4" />
@@ -434,10 +539,12 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
                 type="button"
                 variant="outline"
                 className="min-h-11"
-                disabled={!selected?.activeOrder || otherOccupied.length === 0 || busy}
+                disabled={
+                  !selected?.activeOrder || otherOccupied.length === 0 || busy
+                }
                 onClick={() => {
-                  setTargetTableId('')
-                  setMergeOpen(true)
+                  setTargetTableId("");
+                  setMergeOpen(true);
                 }}
               >
                 Merge
@@ -460,7 +567,9 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add table</DialogTitle>
-            <DialogDescription>Create a table for the current location.</DialogDescription>
+            <DialogDescription>
+              Create a table for the current location.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-2">
@@ -484,10 +593,18 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateOpen(false)}
+            >
               Cancel
             </Button>
-            <Button type="button" disabled={busy || !label.trim()} onClick={() => void createTable()}>
+            <Button
+              type="button"
+              disabled={busy || !label.trim()}
+              onClick={() => void createTable()}
+            >
               Create
             </Button>
           </DialogFooter>
@@ -513,7 +630,11 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
             }))}
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setTransferOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTransferOpen(false)}
+            >
               Cancel
             </Button>
             <Button
@@ -532,7 +653,8 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
           <DialogHeader>
             <DialogTitle>Merge into {selected?.label}</DialogTitle>
             <DialogDescription>
-              Pull another table’s open order items into this table, then cancel the source order.
+              Pull another table’s open order items into this table, then cancel
+              the source order.
             </DialogDescription>
           </DialogHeader>
           <Select
@@ -545,12 +667,16 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
               label: `${table.label}${
                 table.activeOrder
                   ? ` · ${formatMoney(Number(table.activeOrder.grand_total), currency)}`
-                  : ''
+                  : ""
               }`,
             }))}
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setMergeOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setMergeOpen(false)}
+            >
               Cancel
             </Button>
             <Button
@@ -566,25 +692,16 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
 
       <ConfirmModal
         open={deleteOpen}
-        title={selected ? `Delete table ${selected.label}?` : 'Delete table?'}
+        title={selected ? `Delete table ${selected.label}?` : "Delete table?"}
         confirmText="Delete"
         cancelText="Cancel"
         danger
         confirmLoading={deleteLoading}
         onConfirm={() => void confirmDeleteTable()}
         onCancel={() => {
-          if (!deleteLoading) setDeleteOpen(false)
+          if (!deleteLoading) setDeleteOpen(false);
         }}
       />
     </div>
-  )
-}
-
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className={`h-3 w-3 rounded-sm border ${color}`} />
-      {label}
-    </span>
-  )
+  );
 }

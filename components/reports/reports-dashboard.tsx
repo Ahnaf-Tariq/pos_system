@@ -40,8 +40,8 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
   const { selectedLocationId, selectedLocation, locations } =
     useLocationContext();
   const defaults = defaultReportRange();
-  const [fromDate, setFromDate] = useState(defaults.fromDate);
-  const [toDate, setToDate] = useState(defaults.toDate);
+  const [fromDate, setFromDate] = useState<string | null>(null);
+  const [toDate, setToDate] = useState<string | null>(null);
   const [period, setPeriod] = useState<SalesPeriod>("daily");
   const [report, setReport] = useState<ReportBundle | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,9 +120,7 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
             className="min-w-[150px]"
             value={fromDate ? dayjs(fromDate) : null}
             onChange={(value: Dayjs | null) =>
-              setFromDate(
-                value ? value.format("YYYY-MM-DD") : defaults.fromDate,
-              )
+              setFromDate(value ? value.format("YYYY-MM-DD") : null)
             }
             placeholder="From date"
           />
@@ -130,7 +128,7 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
             className="min-w-[150px]"
             value={toDate ? dayjs(toDate) : null}
             onChange={(value: Dayjs | null) =>
-              setToDate(value ? value.format("YYYY-MM-DD") : defaults.toDate)
+              setToDate(value ? value.format("YYYY-MM-DD") : null)
             }
             placeholder="To date"
           />

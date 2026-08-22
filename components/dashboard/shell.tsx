@@ -1,22 +1,23 @@
-'use client'
+"use client";
 
-import { useState, type ReactNode } from 'react'
-import type { DashboardSession } from '@/types/interfaces'
-import { LocationProvider } from '@/components/dashboard/location-provider'
-import { DashboardSidebar } from '@/components/dashboard/sidebar'
-import { DashboardHeader } from '@/components/dashboard/header'
+import { useState, type ReactNode } from "react";
+import type { DashboardSession } from "@/types/interfaces";
+import { LocationProvider } from "@/components/dashboard/location-provider";
+import { DashboardSidebar } from "@/components/dashboard/sidebar";
+import { DashboardHeader } from "@/components/dashboard/header";
 
 export function DashboardShell({
   session,
   isSuperAdmin = false,
   children,
 }: {
-  session: DashboardSession
-  isSuperAdmin?: boolean
-  children: ReactNode
+  session: DashboardSession;
+  isSuperAdmin?: boolean;
+  children: ReactNode;
 }) {
-  const [collapsed, setCollapsed] = useState(false)
-  const staffName = session.profile?.full_name?.trim() || session.email || 'Staff'
+  const [collapsed, setCollapsed] = useState(false);
+  const staffName =
+    session.profile?.full_name?.trim() || session.email || "Staff";
 
   return (
     <LocationProvider
@@ -39,9 +40,11 @@ export function DashboardShell({
             userId={session.shop.user_id}
             isSuperAdmin={isSuperAdmin}
           />
-          <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+          <main className="min-h-0 flex-1 overflow-y-auto p-2.5 md:p-4">
+            {children}
+          </main>
         </div>
       </div>
     </LocationProvider>
-  )
+  );
 }

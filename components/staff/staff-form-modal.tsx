@@ -9,7 +9,7 @@ import {
   type InviteStaffFormValues,
   type InviteStaffInput,
 } from "@/lib/validations/staff";
-import type { StaffMemberView } from "@/types/interfaces";
+import type { StaffFormModalProps, StaffMemberView } from "@/types/interfaces";
 import { roleLabel } from "@/lib/navigation";
 import { StaffRole } from "@/types/enums";
 import { Button } from "@/components/ui/button";
@@ -25,30 +25,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-interface LocationOption {
-  id: string;
-  name: string;
-}
-
-interface StaffFormModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  mode: "add" | "edit";
-  member?: StaffMemberView | null;
-  locations: LocationOption[];
-  roleOptions: StaffRole[];
-  defaultLocationId: string;
-  onSubmit: (values: InviteStaffInput) => Promise<void>;
-}
-
-function emptyDefaults(defaultLocationId: string): InviteStaffInput {
+function emptyDefaults(defaultLocationId: string): InviteStaffFormValues {
   return {
     email: "",
     fullName: "",
     phone: "",
     role: StaffRole.CASHIER,
     locationId: defaultLocationId,
-    salary: 0,
+    salary: undefined,
   };
 }
 

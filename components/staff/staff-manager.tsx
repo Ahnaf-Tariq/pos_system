@@ -16,10 +16,11 @@ import { useLocationContext } from "@/components/dashboard/location-provider";
 import { useRealtimeRefresh } from "@/hooks/use-realtime-refresh";
 import { useTablePagination } from "@/hooks/use-table-pagination";
 import { roleLabel } from "@/lib/navigation";
-import { formatDate, formatMoney } from "@/lib/utils";
+import { formatDate, formatMoney, cn } from "@/lib/utils";
 import { StaffRole } from "@/types/enums";
 import { PaySalaryModal } from "@/components/staff/pay-salary-modal";
 import { StaffFormModal } from "@/components/staff/staff-form-modal";
+import { StaffAttendanceRegister } from "@/components/staff/staff-attendance-register";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AppLoader } from "@/components/ui/app-loader";
@@ -34,6 +35,7 @@ interface StaffManagerProps {
   actorRole: StaffRole;
   actorAuthId: string;
   currency: string;
+  timezone: string;
 }
 
 /** Roles that can be assigned / changed via UI (Owner is fixed, not selectable). */
@@ -49,6 +51,7 @@ export function StaffManager({
   actorRole,
   actorAuthId,
   currency,
+  timezone,
 }: StaffManagerProps) {
   const { locations, selectedLocationId } = useLocationContext();
   const defaultLocationId =
@@ -70,6 +73,7 @@ export function StaffManager({
   const [deleteTarget, setDeleteTarget] = useState<StaffMemberView | null>(
     null,
   );
+  const [tab, setTab] = useState<"staff" | "attendance">("staff");
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -100,7 +104,7 @@ export function StaffManager({
 
   useRealtimeRefresh({
     userId,
-    tables: ["staff_members", "salary_payments"],
+    tables: ["staff_members", "salary_payments", "staff_attendance"],
     onChange: () => void refresh({ silent: true }),
     enabled: Boolean(selectedLocationId),
   });
@@ -197,8 +201,8 @@ export function StaffManager({
       .from("staff_members")
       .update({
         full_name: values.fullName.trim(),
-        email: values.email.trim().toLowerCase(),
-        phone: values.phone?.trim() || null,
+        email: values.email?.trim().toLowerCase() || null,
+        phone: values.phone.trim(),
         role: values.role,
         location_id: values.locationId,
         salary,
@@ -333,7 +337,8 @@ export function StaffManager({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Staff</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Add teammates, set roles, and assign locations.
+            Add teammates, set roles, assign locations, and mark who came each
+            day.
           </p>
         </div>
         <div className="flex gap-2">
@@ -346,14 +351,54 @@ export function StaffManager({
             <Wallet className="size-4" />
             Pay salary
           </Button>
-          <Button type="button" size="sm" onClick={openAddStaff}>
-            <Plus className="size-4" />
-            Add staff
-          </Button>
+          {tab === "staff" ? (
+            <Button type="button" size="sm" onClick={openAddStaff}>
+              <Plus className="size-4" />
+              Add staff
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      {loading ? (
+      <div className="flex gap-1 border-b border-border">
+        <button
+          type="button"
+          onClick={() => setTab("staff")}
+          className={cn(
+            "cursor-pointer border-b-2 px-3 py-2 text-sm font-medium transition",
+            tab === "staff"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Staff
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("attendance")}
+          className={cn(
+            "cursor-pointer border-b-2 px-3 py-2 text-sm font-medium transition",
+            tab === "attendance"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Attendance
+        </button>
+      </div>
+
+      {tab === "attendance" ? (
+        !loading && selectedLocationId ? (
+          <StaffAttendanceRegister
+            userId={userId}
+            actorAuthId={actorAuthId}
+            timezone={timezone}
+            staff={staff}
+          />
+        ) : (
+          <AppLoader />
+        )
+      ) : loading ? (
         <AppLoader fullPage />
       ) : staff.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
@@ -541,6 +586,7 @@ export function StaffManager({
         userId={userId}
         actorAuthId={actorAuthId}
         currency={currency}
+        timezone={timezone}
         staff={staff}
         onPaid={() => void refresh({ silent: true })}
       />

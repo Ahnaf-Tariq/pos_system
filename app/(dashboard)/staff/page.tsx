@@ -26,6 +26,7 @@ export default async function StaffPage() {
       actorRole={session.staffMember.role}
       actorAuthId={user.id}
       currency={session.shop.currency}
+      timezone={session.shop.timezone}
     />
   );
 }
