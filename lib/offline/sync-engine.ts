@@ -10,6 +10,7 @@ import {
   awardLoyaltyPoints,
   deductRecipeStockForOrder,
 } from '@/lib/inventory/deduct'
+import { resolveCashSessionIdForPayment } from '@/lib/cash-drawer/catalog'
 
 export async function syncPendingOrders(supabase: SupabaseClient) {
   const pending = await getPendingOfflineOrders()
@@ -40,7 +41,7 @@ async function upsertOfflineOrder(
   const status =
     order.action === 'pay' ? OrderStatus.PAID : OrderStatus.SENT_TO_KITCHEN
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     user_id: order.user_id,
     location_id: order.location_id,
     table_id: order.table_id,
@@ -66,6 +67,15 @@ async function upsertOfflineOrder(
 
   let orderId = existing?.id as string | undefined
   const wasAlreadyPaid = existing?.status === OrderStatus.PAID
+
+  if (order.action === 'pay' && !wasAlreadyPaid) {
+    payload.cash_session_id = await resolveCashSessionIdForPayment(
+      supabase,
+      order.user_id,
+      order.location_id,
+      order.payment_method
+    )
+  }
 
   if (orderId) {
     const { error } = await supabase.from('orders').update(payload).eq('id', orderId)

@@ -14,6 +14,8 @@ import type {
   SubscriptionPlan,
   TableStatus,
   AttendanceStatus,
+  CashMovementType,
+  CashSessionStatus,
 } from "@/types/enums";
 
 export interface Shop {
@@ -198,6 +200,49 @@ export interface Vendor {
   created_at: string;
 }
 
+export interface CashSession {
+  id: string;
+  user_id: string;
+  location_id: string;
+  opened_by: string;
+  closed_by: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  opening_balance: number;
+  closing_balance_expected: number | null;
+  closing_balance_actual: number | null;
+  variance: number | null;
+  notes: string | null;
+  status: CashSessionStatus | string;
+}
+
+export interface CashMovement {
+  id: string;
+  session_id: string;
+  user_id: string;
+  type: CashMovementType | string;
+  amount: number;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface CashSessionHistoryRow extends CashSession {
+  opened_by_name: string;
+  opened_by_staff_id: string | null;
+  closed_by_name: string | null;
+  closed_by_staff_id: string | null;
+  cash_sales: number;
+  cash_in_total: number;
+  cash_out_total: number;
+  expected_in_drawer: number;
+}
+
+export interface CashDrawerPageData {
+  openSession: CashSessionHistoryRow | null;
+  movements: CashMovement[];
+  history: CashSessionHistoryRow[];
+}
+
 export interface VendorEditorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -238,6 +283,7 @@ export interface Order {
   tax_total: number;
   grand_total: number;
   payment_method: string | null;
+  cash_session_id?: string | null;
   client_generated_id: string | null;
   created_at: string;
   closed_at: string | null;

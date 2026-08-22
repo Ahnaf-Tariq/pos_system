@@ -18,7 +18,7 @@ import { formatDateTime, formatMoney, formatOrderStatus } from "@/lib/utils";
 import { openThermalReceipt } from "@/lib/receipts/open-thermal";
 import { DatePicker, Select } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
-import { Printer } from "lucide-react";
+import { Printer, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -33,21 +33,16 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { AppLoader } from "@/components/ui/app-loader";
+import {
+  arrayToCsv,
+  downloadCsv,
+  ordersToExportData,
+} from "@/lib/data-export";
 
 interface OrdersManagerProps {
   userId: string;
   currency: string;
   role: StaffRole;
-}
-
-function todayInput() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function daysAgoInput(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
 }
 
 export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
@@ -69,6 +64,7 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -161,13 +157,54 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
     }
   }
 
+  async function handleExportOrders() {
+    setExporting(true);
+    try {
+      const exportData = ordersToExportData(orders, currency);
+      const csv = arrayToCsv(exportData);
+
+      const filters = [];
+      if (status !== "all") filters.push(`status-${status}`);
+      if (orderType !== "all") filters.push(`type-${orderType}`);
+      if (staffAuthId !== "all") filters.push("staff");
+      if (fromDate) filters.push(`from-${fromDate}`);
+      if (toDate) filters.push(`to-${toDate}`);
+      if (search) filters.push("search");
+
+      const filterSuffix = filters.length > 0 ? `-${filters.join("_")}` : "";
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `orders-${timestamp}${filterSuffix}.csv`;
+
+      downloadCsv(filename, csv);
+      toast.success(`Exported ${orders.length} orders`);
+    } catch (err) {
+      toast.error("Failed to export orders");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Search history, open receipts, and cancel when permitted.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Search history, open receipts, and cancel when permitted.
+          </p>
+        </div>
+        {orders.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleExportOrders}
+            disabled={exporting}
+          >
+            <Download className="size-4" />
+            {exporting ? "Exporting..." : "Export CSV"}
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-3 rounded-lg border border-border bg-card p-4 md:grid-cols-3 xl:grid-cols-6">

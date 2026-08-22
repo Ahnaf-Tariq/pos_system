@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Select } from "antd";
-import { Pencil, Plus, Trash2, Wallet, Eye } from "lucide-react";
+import { Pencil, Plus, Trash2, Wallet, Eye, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { addStaffAction } from "@/lib/staff/actions";
 import {
@@ -29,6 +29,11 @@ import { Switch } from "@/components/ui/switch";
 import { TablePagination } from "@/components/ui/table-pagination";
 import Link from "next/link";
 import { staffDetailPath } from "@/lib/routes";
+import {
+  arrayToCsv,
+  downloadCsv,
+  staffToExportData,
+} from "@/lib/data-export";
 
 interface StaffManagerProps {
   userId: string;
@@ -38,7 +43,6 @@ interface StaffManagerProps {
   timezone: string;
 }
 
-/** Roles that can be assigned / changed via UI (Owner is fixed, not selectable). */
 const NON_OWNER_ROLES: StaffRole[] = [
   StaffRole.MANAGER,
   StaffRole.CASHIER,
@@ -74,6 +78,7 @@ export function StaffManager({
     null,
   );
   const [tab, setTab] = useState<"staff" | "attendance">("staff");
+  const [exporting, setExporting] = useState(false);
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -331,6 +336,23 @@ export function StaffManager({
     await refresh();
   }
 
+  async function handleExportStaff() {
+    setExporting(true);
+    try {
+      const exportData = staffToExportData(staff, currency);
+      const csv = arrayToCsv(exportData);
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `staff-${timestamp}.csv`;
+
+      downloadCsv(filename, csv);
+      toast.success(`Exported ${staff.length} staff members`);
+    } catch (err) {
+      toast.error("Failed to export staff");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -342,6 +364,18 @@ export function StaffManager({
           </p>
         </div>
         <div className="flex gap-2">
+          {tab === "staff" && staff.length > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleExportStaff}
+              disabled={exporting}
+            >
+              <Download className="size-4" />
+              {exporting ? "Exporting..." : "Export CSV"}
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"

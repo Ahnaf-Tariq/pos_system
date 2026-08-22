@@ -6,9 +6,7 @@ import { Download, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   defaultReportRange,
-  downloadCsv,
   fetchReportBundle,
-  toCsv,
 } from "@/lib/reports/analytics";
 import type { ReportBundle, SalesPeriod } from "@/types/interfaces";
 import { useLocationContext } from "@/components/dashboard/location-provider";
@@ -23,6 +21,15 @@ import { DatePicker, Select } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { Button } from "@/components/ui/button";
 import { AppLoader } from "@/components/ui/app-loader";
+import {
+  arrayToCsv,
+  downloadCsv,
+  salesPeriodToExportData,
+  topItemsToExportData,
+  staffPerformanceToExportData,
+  discountsAuditToExportData,
+  cancelsAuditToExportData,
+} from "@/lib/data-export";
 
 interface ReportsDashboardProps {
   userId: string;
@@ -45,6 +52,7 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
   const [period, setPeriod] = useState<SalesPeriod>("daily");
   const [report, setReport] = useState<ReportBundle | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const refresh = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -82,28 +90,154 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
     enabled: Boolean(selectedLocationId),
   });
 
-  function exportSalesCsv() {
+  async function handleExportComprehensive() {
     if (!report) return;
-    const csv = toCsv(
-      report.byPeriod.map((point) => ({
-        period: point.label,
-        orders: point.orders,
-        revenue: Number(point.total.toFixed(2)),
-      })),
-    );
-    downloadCsv(`auric-sales-${period}-${fromDate}-to-${toDate}.csv`, csv);
+    setExporting(true);
+    try {
+      const salesData = salesPeriodToExportData(report.byPeriod, currency);
+      const itemsData = topItemsToExportData(report.itemRanking, currency);
+      const staffData = staffPerformanceToExportData(report.staffPerformance, currency);
+      const discountsData = discountsAuditToExportData(report.discounts, currency);
+      const cancelsData = cancelsAuditToExportData(report.voids, currency);
+
+      // Create CSV content with multiple sheets
+      let csvContent = "SALES REPORT - " + new Date().toLocaleDateString() + "\n";
+      csvContent += `Period: ${period} | From: ${fromDate || "Start"} | To: ${toDate || "End"}\n`;
+      csvContent += `Location: ${selectedLocation?.name || "All"}\n`;
+      csvContent += "\n\n";
+
+      // Sales by Period
+      csvContent += "=== SALES BY PERIOD ===\n";
+      csvContent += arrayToCsv(salesData) + "\n\n";
+
+      // Top Items
+      csvContent += "=== TOP ITEMS ===\n";
+      csvContent += arrayToCsv(itemsData) + "\n\n";
+
+      // Staff Performance
+      if (staffData.length > 0) {
+        csvContent += "=== STAFF PERFORMANCE ===\n";
+        csvContent += arrayToCsv(staffData) + "\n\n";
+      }
+
+      // Discounts
+      if (discountsData.length > 0) {
+        csvContent += "=== DISCOUNTS AUDIT ===\n";
+        csvContent += arrayToCsv(discountsData) + "\n\n";
+      }
+
+      // Cancels
+      if (cancelsData.length > 0) {
+        csvContent += "=== CANCELS AUDIT ===\n";
+        csvContent += arrayToCsv(cancelsData) + "\n\n";
+      }
+
+      // Summary Statistics
+      csvContent += "=== SUMMARY STATISTICS ===\n";
+      csvContent += `Total Revenue,${report.revenue}\n`;
+      csvContent += `Paid Orders,${report.paidOrders}\n`;
+      csvContent += `Cancelled Orders,${report.voidCount}\n`;
+      csvContent += `Total Orders,${report.paidOrders + report.voidCount}\n`;
+      csvContent += `Total Discounts,${report.discountTotal}\n`;
+      csvContent += `Currency,${currency}\n`;
+
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `report-comprehensive-${period}-${timestamp}.csv`;
+      downloadCsv(filename, csvContent);
+      toast.success("Report exported successfully");
+    } catch (err) {
+      toast.error("Failed to export report");
+    } finally {
+      setExporting(false);
+    }
   }
 
-  function exportItemsCsv() {
+  async function handleExportSalesByPeriod() {
     if (!report) return;
-    const csv = toCsv(
-      report.itemRanking.map((item) => ({
-        item: item.name,
-        quantity: item.quantity,
-        revenue: Number(item.revenue.toFixed(2)),
-      })),
-    );
-    downloadCsv(`auric-items-${fromDate}-to-${toDate}.csv`, csv);
+    setExporting(true);
+    try {
+      const data = salesPeriodToExportData(report.byPeriod, currency);
+      const csv = arrayToCsv(data);
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `sales-${period}-${timestamp}.csv`;
+      downloadCsv(filename, csv);
+      toast.success("Sales data exported");
+    } catch (err) {
+      toast.error("Failed to export sales data");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleExportTopItems() {
+    if (!report) return;
+    setExporting(true);
+    try {
+      const data = topItemsToExportData(report.itemRanking, currency);
+      const csv = arrayToCsv(data);
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `top-items-${timestamp}.csv`;
+      downloadCsv(filename, csv);
+      toast.success("Top items exported");
+    } catch (err) {
+      toast.error("Failed to export items");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleExportStaffPerformance() {
+    if (!report || report.staffPerformance.length === 0) return;
+    setExporting(true);
+    try {
+      const data = staffPerformanceToExportData(
+        report.staffPerformance,
+        currency
+      );
+      const csv = arrayToCsv(data);
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `staff-performance-${timestamp}.csv`;
+      downloadCsv(filename, csv);
+      toast.success("Staff performance exported");
+    } catch (err) {
+      toast.error("Failed to export staff data");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleExportDiscounts() {
+    if (!report || report.discounts.length === 0) return;
+    setExporting(true);
+    try {
+      const data = discountsAuditToExportData(report.discounts, currency);
+      const csv = arrayToCsv(data);
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `discounts-audit-${timestamp}.csv`;
+      downloadCsv(filename, csv);
+      toast.success("Discounts audit exported");
+    } catch (err) {
+      toast.error("Failed to export discounts");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleExportCancels() {
+    if (!report || report.voids.length === 0) return;
+    setExporting(true);
+    try {
+      const data = cancelsAuditToExportData(report.voids, currency);
+      const csv = arrayToCsv(data);
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `cancels-audit-${timestamp}.csv`;
+      downloadCsv(filename, csv);
+      toast.success("Cancels audit exported");
+    } catch (err) {
+      toast.error("Failed to export cancels");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -139,18 +273,22 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
               setFromDate(null);
               setToDate(null);
             }}
+            title="Clear All"
           >
             <X className="size-4" />
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={exportSalesCsv}
-            disabled={!report}
-          >
-            <Download className="size-4" />
-            CSV
-          </Button>
+          {report && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportComprehensive}
+              disabled={exporting}
+            >
+              <Download className="size-4" />
+              {exporting ? "Exporting..." : "Export All"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -185,12 +323,23 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
             <section className="rounded-lg border border-border bg-card p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold">Sales</h2>
-                <Select
-                  className="min-w-[140px]"
-                  value={period}
-                  onChange={(value) => setPeriod(value as SalesPeriod)}
-                  options={PERIOD_OPTIONS}
-                />
+                <div className="flex gap-2">
+                  <Select
+                    className="min-w-[140px]"
+                    value={period}
+                    onChange={(value) => setPeriod(value as SalesPeriod)}
+                    options={PERIOD_OPTIONS}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleExportSalesByPeriod}
+                    disabled={exporting}
+                  >
+                    <Download className="size-4" />
+                  </Button>
+                </div>
               </div>
               <div className="mt-2">
                 <SalesPeriodChart
@@ -201,7 +350,18 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
             </section>
 
             <section className="rounded-lg border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold">Top items mix</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold">Top items mix</h2>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleExportTopItems}
+                  disabled={exporting}
+                >
+                  <Download className="size-4" />
+                </Button>
+              </div>
               <div className="mt-2">
                 <TopItemsChart items={report.itemRanking} currency={currency} />
               </div>
@@ -216,9 +376,10 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={exportItemsCsv}
+                  onClick={handleExportTopItems}
+                  disabled={exporting}
                 >
-                  Export
+                  <Download className="size-4" />
                 </Button>
               </div>
               <ul className="mt-4 space-y-2">
@@ -248,7 +409,20 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
             </section>
 
             <section className="rounded-lg border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold">Staff performance</h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">Staff performance</h2>
+                {report.staffPerformance.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleExportStaffPerformance}
+                    disabled={exporting}
+                  >
+                    <Download className="size-4" />
+                  </Button>
+                )}
+              </div>
               <ul className="mt-4 space-y-2">
                 {report.staffPerformance.length === 0 ? (
                   <li className="text-sm text-muted-foreground">
@@ -279,7 +453,20 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
 
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="rounded-lg border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold">Discount audit</h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">Discount audit</h2>
+                {report.discounts.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleExportDiscounts}
+                    disabled={exporting}
+                  >
+                    <Download className="size-4" />
+                  </Button>
+                )}
+              </div>
               <ul className="mt-4 space-y-2 text-sm">
                 {report.discounts.length === 0 ? (
                   <li className="text-muted-foreground">
@@ -301,7 +488,20 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
             </section>
 
             <section className="rounded-lg border border-border bg-card p-4">
-              <h2 className="text-sm font-semibold">Cancel audit</h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">Cancel audit</h2>
+                {report.voids.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleExportCancels}
+                    disabled={exporting}
+                  >
+                    <Download className="size-4" />
+                  </Button>
+                )}
+              </div>
               <ul className="mt-4 space-y-2 text-sm">
                 {report.voids.length === 0 ? (
                   <li className="text-muted-foreground">

@@ -16,6 +16,7 @@ import {
   awardLoyaltyPoints,
   deductRecipeStockForOrder,
 } from "@/lib/inventory/deduct";
+import { resolveCashSessionIdForPayment } from "@/lib/cash-drawer/catalog";
 
 export async function fetchKdsTickets(
   supabase: SupabaseClient,
@@ -251,20 +252,28 @@ export async function settleTicketAsPaid(
 
   if (existing.status === OrderStatus.PAID) return;
 
+  const locationId =
+    (existing.location_id as string) ?? ticket.order.location_id;
+  const cashSessionId = await resolveCashSessionIdForPayment(
+    supabase,
+    userId,
+    locationId,
+    paymentMethod,
+  );
+
   const { error: orderError } = await supabase
     .from("orders")
     .update({
       status: OrderStatus.PAID,
       payment_method: paymentMethod,
       closed_at: new Date().toISOString(),
+      cash_session_id: cashSessionId,
     })
     .eq("id", ticket.order.id)
     .eq("user_id", userId);
 
   if (orderError) throw new Error(orderError.message);
 
-  const locationId =
-    (existing.location_id as string) ?? ticket.order.location_id;
   const cartItems = ticket.items.map((item) => ({
     localId: item.id,
     menu_item_id: item.menu_item_id,

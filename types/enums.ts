@@ -76,3 +76,13 @@ export enum AttendanceStatus {
   LEAVE = "leave",
   HALF_DAY = "half_day",
 }
+
+export enum CashSessionStatus {
+  OPEN = "open",
+  CLOSED = "closed",
+}
+
+export enum CashMovementType {
+  CASH_IN = "cash_in",
+  CASH_OUT = "cash_out",
+}
