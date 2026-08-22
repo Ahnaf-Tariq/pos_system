@@ -87,6 +87,7 @@ export const config = {
     "/tables/:path*",
     "/menu/:path*",
     "/inventory/:path*",
+    "/vendors/:path*",
     "/orders/:path*",
     "/reports/:path*",
     "/staff/:path*",

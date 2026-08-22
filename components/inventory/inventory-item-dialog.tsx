@@ -1,15 +1,17 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
+import { Select } from 'antd'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createClient } from '@/lib/supabase/client'
 import {
   inventoryItemSchema,
   type InventoryItemInput,
 } from '@/lib/validations/inventory'
-import type { InventoryItem } from '@/types/interfaces'
+import { fetchVendors } from '@/lib/vendors/catalog'
+import type { InventoryItem, Vendor } from '@/types/interfaces'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -39,10 +41,13 @@ export function InventoryItemDialog({
   item,
   onSaved,
 }: InventoryItemDialogProps) {
+  const [vendors, setVendors] = useState<Vendor[]>([])
+
   const {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<InventoryItemInput>({
     resolver: zodResolver(inventoryItemSchema),
@@ -52,6 +57,7 @@ export function InventoryItemDialog({
       quantity_on_hand: 0,
       reorder_threshold: 0,
       cost_per_unit: 0,
+      vendor_id: '',
     },
   })
 
@@ -64,6 +70,7 @@ export function InventoryItemDialog({
         quantity_on_hand: Number(item.quantity_on_hand),
         reorder_threshold: Number(item.reorder_threshold),
         cost_per_unit: Number(item.cost_per_unit),
+        vendor_id: item.vendor_id ?? '',
       })
     } else {
       reset({
@@ -72,15 +79,23 @@ export function InventoryItemDialog({
         quantity_on_hand: 0,
         reorder_threshold: 0,
         cost_per_unit: 0,
+        vendor_id: '',
       })
     }
-  }, [open, item, reset])
+
+    void (async () => {
+      const supabase = createClient()
+      setVendors(await fetchVendors(supabase, userId, locationId))
+    })()
+  }, [open, item, reset, userId, locationId])
 
   async function onSubmit(values: InventoryItemInput) {
     const supabase = createClient()
+    const vendorId = values.vendor_id || null
     const payload = {
       user_id: userId,
       location_id: locationId,
+      vendor_id: vendorId,
       name: values.name.trim(),
       unit: values.unit.trim(),
       quantity_on_hand: values.quantity_on_hand,
@@ -116,6 +131,7 @@ export function InventoryItemDialog({
           inventory_item_id: created.id,
           change_qty: values.quantity_on_hand,
           reason: 'restock',
+          vendor_id: vendorId,
         })
       }
       toast.success('Ingredient created')
@@ -179,6 +195,28 @@ export function InventoryItemDialog({
                 {...register('reorder_threshold', { valueAsNumber: true })}
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="vendor_id">Preferred vendor</Label>
+            <Controller
+              name="vendor_id"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  id="vendor_id"
+                  className="w-full"
+                  allowClear
+                  placeholder="Optional — used on restock"
+                  value={field.value || undefined}
+                  onChange={(value) => field.onChange(value ?? '')}
+                  options={vendors.map((vendor) => ({
+                    value: vendor.id,
+                    label: vendor.name,
+                  }))}
+                />
+              )}
+            />
           </div>
 
           <DialogFooter>

@@ -148,6 +148,7 @@ export interface InventoryItem {
   id: string;
   user_id: string;
   location_id: string;
+  vendor_id: string | null;
   name: string;
   unit: string;
   quantity_on_hand: number;
@@ -158,6 +159,7 @@ export interface InventoryItem {
 
 export interface InventoryItemView extends InventoryItem {
   is_low: boolean;
+  vendor_name: string | null;
 }
 
 export interface RecipeItem {
@@ -178,10 +180,31 @@ export interface InventoryMovement {
   id: string;
   user_id: string;
   inventory_item_id: string;
+  vendor_id: string | null;
+  vendor_name?: string | null;
   change_qty: number;
   reason: InventoryMovementReason | string;
   reference_order_id: string | null;
   created_at: string;
+}
+
+export interface Vendor {
+  id: string;
+  user_id: string;
+  location_id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  created_at: string;
+}
+
+export interface VendorEditorDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  userId: string;
+  locationId: string | null;
+  vendor?: Pick<Vendor, "id" | "name" | "phone" | "email"> | null;
+  onSaved: (vendor: Vendor) => void;
 }
 
 export interface RestaurantTable {

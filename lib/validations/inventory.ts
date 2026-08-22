@@ -7,6 +7,7 @@ export const inventoryItemSchema = z.object({
   quantity_on_hand: z.number().min(0),
   reorder_threshold: z.number().min(0),
   cost_per_unit: z.number().min(0),
+  vendor_id: z.string().uuid().optional().or(z.literal('')),
 })
 
 export type InventoryItemInput = z.infer<typeof inventoryItemSchema>
@@ -18,6 +19,7 @@ export const stockAdjustSchema = z.object({
     InventoryMovementReason.WASTE,
     InventoryMovementReason.ADJUSTMENT,
   ]),
+  vendor_id: z.string().uuid().optional().or(z.literal('')),
 })
 
 export type StockAdjustInput = z.infer<typeof stockAdjustSchema>

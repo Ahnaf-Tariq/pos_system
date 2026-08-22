@@ -7,6 +7,7 @@ import {
   MonitorSmartphone,
   Package,
   Settings,
+  Truck,
   ShoppingBag,
   Users,
   UserRound,
@@ -58,6 +59,12 @@ export const NAV_ITEMS: NavItem[] = [
     title: 'Inventory',
     href: ROUTES.inventory,
     icon: Package,
+    roles: [StaffRole.OWNER, StaffRole.MANAGER],
+  },
+  {
+    title: 'Vendors',
+    href: ROUTES.vendors,
+    icon: Truck,
     roles: [StaffRole.OWNER, StaffRole.MANAGER],
   },
   {

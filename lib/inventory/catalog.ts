@@ -15,15 +15,19 @@ export async function fetchInventoryItems(
 ): Promise<InventoryItemView[]> {
   const { data, error } = await supabase
     .from("inventory_items")
-    .select("*")
+    .select("*, vendors(name)")
     .eq("user_id", userId)
     .eq("location_id", locationId)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
 
-  return ((data as InventoryItem[]) ?? []).map((item) => ({
+  return (
+    (data as Array<InventoryItem & { vendors?: { name?: string } | null }>) ?? []
+  ).map((item) => ({
     ...item,
+    vendor_id: item.vendor_id ?? null,
+    vendor_name: item.vendors?.name ?? null,
     quantity_on_hand: Number(item.quantity_on_hand),
     reorder_threshold: Number(item.reorder_threshold),
     cost_per_unit: Number(item.cost_per_unit),
@@ -39,17 +43,20 @@ export async function fetchRecentMovements(
 ): Promise<InventoryMovement[]> {
   const { data, error } = await supabase
     .from("inventory_movements")
-    .select("*")
+    .select("*, vendors(name)")
     .eq("user_id", userId)
     .eq("inventory_item_id", inventoryItemId)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(limit)
 
-  if (error) throw new Error(error.message);
-  return ((data as InventoryMovement[]) ?? []).map((row) => ({
-    ...row,
-    change_qty: Number(row.change_qty),
-  }));
+  if (error) throw new Error(error.message)
+  return ((data as Array<InventoryMovement & { vendors?: { name?: string } | null }>) ?? []).map(
+    (row) => ({
+      ...row,
+      change_qty: Number(row.change_qty),
+      vendor_name: row.vendors?.name ?? null,
+    }),
+  )
 }
 
 export async function adjustStock({
@@ -58,20 +65,28 @@ export async function adjustStock({
   item,
   changeQty,
   reason,
+  vendorId,
 }: {
   supabase: SupabaseClient;
   userId: string;
   item: InventoryItem;
   changeQty: number;
   reason: string;
+  vendorId?: string | null;
 }) {
   const previousQty = Number(item.quantity_on_hand);
   const nextQty = previousQty + changeQty;
   if (nextQty < 0) throw new Error("Stock cannot go below zero");
 
+  const isRestock = reason === "restock";
+  const nextVendorId = isRestock ? vendorId || null : item.vendor_id;
+
   const { error: updateError } = await supabase
     .from("inventory_items")
-    .update({ quantity_on_hand: nextQty })
+    .update({
+      quantity_on_hand: nextQty,
+      ...(isRestock ? { vendor_id: nextVendorId } : {}),
+    })
     .eq("id", item.id)
     .eq("user_id", userId);
 
@@ -85,6 +100,7 @@ export async function adjustStock({
       change_qty: changeQty,
       reason,
       reference_order_id: null,
+      vendor_id: isRestock ? nextVendorId : null,
     });
 
   if (movementError) throw new Error(movementError.message);

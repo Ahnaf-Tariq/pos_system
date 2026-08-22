@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Download } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   defaultReportRange,
@@ -132,6 +132,16 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
             }
             placeholder="To date"
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setFromDate(null);
+              setToDate(null);
+            }}
+          >
+            <X className="size-4" />
+          </Button>
           <Button
             type="button"
             variant="outline"

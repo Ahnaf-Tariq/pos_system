@@ -34,7 +34,7 @@ interface StaffAttendanceCalendarProps {
   canMark: boolean;
 }
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function StaffAttendanceCalendar({
@@ -205,6 +205,15 @@ export function StaffAttendanceCalendar({
             onChange={onToChange}
             placeholder="To"
           />
+          { (fromDate || toDate) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setFromDate(null); setToDate(null); setViewYear(new Date().getFullYear()); setViewMonth(new Date().getMonth()); }}
+            >
+              <X className="size-4" />
+            </Button>
+          ) }
         </div>
       </div>
 

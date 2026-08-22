@@ -105,7 +105,8 @@ export function InventoryManager({ userId, currency }: InventoryManagerProps) {
       if (!q) return true;
       return (
         item.name.toLowerCase().includes(q) ||
-        item.unit.toLowerCase().includes(q)
+        item.unit.toLowerCase().includes(q) ||
+        (item.vendor_name ?? "").toLowerCase().includes(q)
       );
     });
   }, [items, lowOnly, query]);
@@ -209,6 +210,7 @@ export function InventoryManager({ userId, currency }: InventoryManagerProps) {
                 <th className="px-4 py-3 font-medium">Reorder</th>
                 <th className="px-4 py-3 font-medium">Cost/unit</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Vendor</th>
                 <th className="px-4 py-3 font-medium">Created</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
@@ -232,6 +234,9 @@ export function InventoryManager({ userId, currency }: InventoryManagerProps) {
                     ) : (
                       <Badge variant="success">OK</Badge>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {item.vendor_name?.trim() || "—"}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground tabular-nums">
                     {formatDate(item.created_at)}

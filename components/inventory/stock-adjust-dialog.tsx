@@ -1,18 +1,21 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { Controller, useForm } from 'react-hook-form'
 import { Select } from 'antd'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createClient } from '@/lib/supabase/client'
 import { adjustStock, fetchRecentMovements } from '@/lib/inventory/catalog'
+import { fetchVendors } from '@/lib/vendors/catalog'
 import {
   stockAdjustSchema,
   type StockAdjustInput,
 } from '@/lib/validations/inventory'
-import type { InventoryItem, InventoryMovement } from '@/types/interfaces'
+import type { InventoryItem, InventoryMovement, Vendor } from '@/types/interfaces'
 import { InventoryMovementReason } from '@/types/enums'
+import { ROUTES } from '@/lib/routes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -41,32 +44,42 @@ export function StockAdjustDialog({
   onSaved,
 }: StockAdjustDialogProps) {
   const [movements, setMovements] = useState<InventoryMovement[]>([])
+  const [vendors, setVendors] = useState<Vendor[]>([])
 
   const {
     register,
     handleSubmit,
     reset,
     control,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<StockAdjustInput>({
     resolver: zodResolver(stockAdjustSchema),
     defaultValues: {
       change_qty: 0,
       reason: InventoryMovementReason.RESTOCK,
+      vendor_id: '',
     },
   })
+
+  const reason = watch('reason')
 
   useEffect(() => {
     if (!open || !item) return
     reset({
       change_qty: 0,
       reason: InventoryMovementReason.RESTOCK,
+      vendor_id: item.vendor_id ?? '',
     })
 
     void (async () => {
       const supabase = createClient()
-      const rows = await fetchRecentMovements(supabase, userId, item.id)
+      const [rows, vendorRows] = await Promise.all([
+        fetchRecentMovements(supabase, userId, item.id),
+        fetchVendors(supabase, userId, item.location_id),
+      ])
       setMovements(rows)
+      setVendors(vendorRows)
     })()
   }, [open, item, userId, reset])
 
@@ -88,6 +101,10 @@ export function StockAdjustDialog({
         item,
         changeQty,
         reason: values.reason,
+        vendorId:
+          values.reason === InventoryMovementReason.RESTOCK
+            ? values.vendor_id || null
+            : null,
       })
       toast.success('Stock adjusted')
       onSaved()
@@ -149,6 +166,46 @@ export function StockAdjustDialog({
             />
           </div>
 
+          {reason === InventoryMovementReason.RESTOCK ? (
+            <div className="space-y-2">
+              <Label htmlFor="vendor_id">Vendor</Label>
+              <Controller
+                name="vendor_id"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    id="vendor_id"
+                    className="w-full"
+                    allowClear
+                    placeholder={
+                      vendors.length === 0
+                        ? 'No vendors for this location'
+                        : 'Who did you buy from?'
+                    }
+                    value={field.value || undefined}
+                    onChange={(value) => field.onChange(value ?? '')}
+                    options={vendors.map((vendor) => ({
+                      value: vendor.id,
+                      label: vendor.name,
+                    }))}
+                  />
+                )}
+              />
+              {vendors.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Add suppliers on the{' '}
+                  <Link
+                    href={ROUTES.vendors}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    Vendors
+                  </Link>{' '}
+                  page, then restock in seconds.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {movements.length > 0 ? (
             <div className="space-y-2 rounded-md border border-border p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -157,7 +214,10 @@ export function StockAdjustDialog({
               <ul className="space-y-1 text-xs text-muted-foreground">
                 {movements.map((movement) => (
                   <li key={movement.id} className="flex justify-between gap-2">
-                    <span className="capitalize">{movement.reason}</span>
+                    <span className="capitalize">
+                      {movement.reason}
+                      {movement.vendor_name ? ` · ${movement.vendor_name}` : ''}
+                    </span>
                     <span className="tabular-nums text-foreground">
                       {movement.change_qty > 0 ? '+' : ''}
                       {movement.change_qty}
