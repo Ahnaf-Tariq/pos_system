@@ -16,56 +16,75 @@ export interface QueryParams {
     rankBy: RankBy
 }
 
-const ALL_TIME_PHRASES = ['all time', 'ever', 'total', 'overall', 'since beginning', 'all orders', 'everything', 'historically']
+const ALL_TIME_PHRASES = [
+    'all time', 'all-time', 'ever', 'overall', 'since beginning', 'all orders',
+    'everything', 'historically', 'total ever', 'of all time', 'till now',
+    'till date', 'to date', 'so far', 'from start', 'from beginning',
+    'all of my', 'complete history',
+]
 
-const STATUS_KEYWORDS: Record<string, string> = {
-    cancelled: 'cancelled',
-    canceled: 'cancelled',
-    pending: 'pending',
-    refunded: 'refunded',
+const STATUS_KEYWORD_MAP: Record<string, string> = {
     paid: 'paid',
+    payment: 'paid',
+    completed: 'paid',
+    complete: 'paid',
+    done: 'paid',
+    successful: 'paid',
+    success: 'paid',
+    cancelled: 'void',
+    canceled: 'void',
+    cancel: 'void',
+    void: 'void',
+    voided: 'void',
+    refunded: 'refunded',
+    refund: 'refunded',
+    pending: 'pending',
+    'sent to kitchen': 'sent_to_kitchen',
+    kitchen: 'sent_to_kitchen',
+    open: 'open',
 }
 
-const CONTACT_KEYWORDS = ['email', 'phone', 'contact number', 'contact detail', 'contact info']
+const CONTACT_KEYWORDS = [
+    'email', 'phone', 'contact number', 'contact detail', 'contact info',
+    'mobile', 'whatsapp', 'number',
+]
 
-const SPEND_RANK_KEYWORDS = ['spent the most', 'spent most', 'biggest spender', 'highest spending', 'highest paying']
+const SPEND_RANK_KEYWORDS = [
+    'spent the most', 'spent most', 'biggest spender', 'highest spending',
+    'highest paying', 'most money', 'most spend', 'top spender',
+]
 
 function startOfDay(date: Date): Date {
-    const d = new Date(date)
-    d.setHours(0, 0, 0, 0)
-    return d
+    const d = new Date(date); d.setHours(0, 0, 0, 0); return d
 }
-
 function endOfDay(date: Date): Date {
-    const d = new Date(date)
-    d.setHours(23, 59, 59, 999)
-    return d
+    const d = new Date(date); d.setHours(23, 59, 59, 999); return d
 }
-
 function startOfWeek(date: Date): Date {
     const d = new Date(date)
-    const day = d.getDay()
-    d.setDate(d.getDate() - day)
+    d.setDate(d.getDate() - d.getDay())
     d.setHours(0, 0, 0, 0)
     return d
 }
-
 function startOfMonth(date: Date): Date {
-    const d = new Date(date)
-    d.setDate(1)
-    d.setHours(0, 0, 0, 0)
-    return d
+    const d = new Date(date); d.setDate(1); d.setHours(0, 0, 0, 0); return d
 }
+function toISO(date: Date): string { return date.toISOString() }
 
-function toISO(date: Date): string {
-    return date.toISOString()
+function extractRollingDays(lower: string): number | null {
+    const m = lower.match(/last\s+(\d+)\s+days?/)
+    return m ? parseInt(m[1], 10) : null
 }
 
 function extractStatuses(lower: string): string[] {
     const found = new Set<string>()
-    for (const [kw, status] of Object.entries(STATUS_KEYWORDS)) {
-        if (lower.includes(kw)) found.add(status)
+
+
+    for (const [kw, dbStatus] of Object.entries(STATUS_KEYWORD_MAP)) {
+        if (lower.includes(kw)) found.add(dbStatus)
     }
+
+
     return found.size > 0 ? Array.from(found) : ['paid']
 }
 
@@ -83,7 +102,23 @@ export function extractParams(message: string): QueryParams {
 
     let dateRange: DateRange
 
-    if (lower.includes('yesterday')) {
+
+    if (ALL_TIME_PHRASES.some((phrase) => lower.includes(phrase))) {
+        dateRange = { from: '', to: '', label: 'all time', allTime: true }
+    }
+
+    else if (extractRollingDays(lower) !== null) {
+        const days = extractRollingDays(lower)!
+        const from = new Date(now)
+        from.setDate(now.getDate() - days)
+        dateRange = {
+            from: toISO(startOfDay(from)),
+            to: toISO(endOfDay(now)),
+            label: `last ${days} days`,
+            allTime: false,
+        }
+    }
+    else if (lower.includes('yesterday')) {
         const yesterday = new Date(now)
         yesterday.setDate(now.getDate() - 1)
         dateRange = {
@@ -92,7 +127,8 @@ export function extractParams(message: string): QueryParams {
             label: 'yesterday',
             allTime: false,
         }
-    } else if (lower.includes('last week')) {
+    }
+    else if (lower.includes('last week')) {
         const weekStart = startOfWeek(now)
         weekStart.setDate(weekStart.getDate() - 7)
         const weekEnd = new Date(weekStart)
@@ -104,14 +140,16 @@ export function extractParams(message: string): QueryParams {
             label: 'last week',
             allTime: false,
         }
-    } else if (lower.includes('this week')) {
+    }
+    else if (lower.includes('this week')) {
         dateRange = {
             from: toISO(startOfWeek(now)),
             to: toISO(endOfDay(now)),
             label: 'this week',
             allTime: false,
         }
-    } else if (lower.includes('last month')) {
+    }
+    else if (lower.includes('last month')) {
         const firstOfThisMonth = startOfMonth(now)
         const lastMonthEnd = new Date(firstOfThisMonth)
         lastMonthEnd.setSeconds(-1)
@@ -122,28 +160,25 @@ export function extractParams(message: string): QueryParams {
             label: 'last month',
             allTime: false,
         }
-    } else if (lower.includes('this month')) {
+    }
+    else if (lower.includes('this month')) {
         dateRange = {
             from: toISO(startOfMonth(now)),
             to: toISO(endOfDay(now)),
             label: 'this month',
             allTime: false,
         }
-    } else if (lower.includes('today')) {
+    }
+    else if (lower.includes('today')) {
         dateRange = {
             from: toISO(startOfDay(now)),
             to: toISO(endOfDay(now)),
             label: 'today',
             allTime: false,
         }
-    } else if (ALL_TIME_PHRASES.some((phrase) => lower.includes(phrase))) {
-        dateRange = {
-            from: '',
-            to: '',
-            label: 'all time',
-            allTime: true,
-        }
-    } else {
+    }
+    else {
+
         dateRange = {
             from: toISO(startOfDay(now)),
             to: toISO(endOfDay(now)),
@@ -152,18 +187,23 @@ export function extractParams(message: string): QueryParams {
         }
     }
 
-    const limitMatch = lower.match(/top\s+(\d+)|last\s+(\d+)|(\d+)\s+item|(\d+)\s+order/)
+
+    const limitMatch = lower.match(/top\s+(\d+)|last\s+(\d+)\s+order|(\d+)\s+item/)
     const limit = limitMatch
-        ? parseInt(limitMatch[1] ?? limitMatch[2] ?? limitMatch[3] ?? limitMatch[4] ?? '5', 10)
+        ? parseInt(limitMatch[1] ?? limitMatch[2] ?? limitMatch[3] ?? '5', 10)
         : 5
 
+
     const nameMatch = message.match(/"([^"]+)"|'([^']+)'/)
-        ?? message.match(/(?:for|about|called|named)\s+([A-Za-z0-9 ]+)/i)
+        ?? message.match(/(?:called|named)\s+([A-Za-z0-9 ]+)/i)
     const nameHint = nameMatch ? (nameMatch[1] ?? nameMatch[2] ?? null) : null
 
-    const statuses = extractStatuses(lower)
-    const wantsContact = extractWantsContact(lower)
-    const rankBy = extractRankBy(lower)
-
-    return { dateRange, limit, nameHint, statuses, wantsContact, rankBy }
+    return {
+        dateRange,
+        limit,
+        nameHint,
+        statuses: extractStatuses(lower),
+        wantsContact: extractWantsContact(lower),
+        rankBy: extractRankBy(lower),
+    }
 }

@@ -6,6 +6,20 @@ function fmt(amount: number, currency: string): string {
     return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 }
 
+function statusLabel(dbStatus: string): string {
+    const map: Record<string, string> = {
+        paid: 'Paid',
+        void: 'Cancelled',
+        voided: 'Cancelled',
+        cancelled: 'Cancelled',
+        refunded: 'Refunded',
+        pending: 'Pending',
+        sent_to_kitchen: 'Sent to Kitchen',
+        open: 'Open',
+    }
+    return map[dbStatus.toLowerCase()] ?? dbStatus
+}
+
 export function buildResponse(
     data: FetchedData,
     params: QueryParams,
@@ -16,6 +30,7 @@ export function buildResponse(
     const period = dateRange.label
 
     switch (intent) {
+
 
         case 'revenue_today':
         case 'revenue_range': {
@@ -30,11 +45,11 @@ export function buildResponse(
 
             const byType: Record<string, number> = {}
             for (const r of rows) {
-                const type = String(r.order_type)
-                byType[type] = (byType[type] ?? 0) + 1
+                const t = String(r.order_type)
+                byType[t] = (byType[t] ?? 0) + 1
             }
             const typeLines = Object.entries(byType)
-                .map(([type, c]) => `- ${type.replace('_', ' ')}: ${c} order${c === 1 ? '' : 's'}`)
+                .map(([t, c]) => `- ${t.replace('_', ' ')}: ${c} order${c === 1 ? '' : 's'}`)
                 .join('\n')
 
             return `Here's your revenue summary for **${period}**:
@@ -50,38 +65,59 @@ export function buildResponse(
 ${typeLines}`
         }
 
+
         case 'order_count': {
             if (rows.length === 0) {
-                return `No orders found for **${period}**. Nothing recorded in that time window yet.`
+                const requestedStatuses = (meta.statuses as string[] ?? ['paid'])
+                    .map(statusLabel).join(' & ')
+                return `No **${requestedStatuses}** orders found for **${period}**.`
             }
 
             const count = rows.length
-            const statuses = Array.isArray(meta.statuses) ? (meta.statuses as string[]) : ['paid']
+            const requestedStatuses = meta.statuses as string[] ?? ['paid']
+
+
+            const byStatus: Record<string, number> = {}
+            for (const r of rows) {
+                const label = statusLabel(String(r.status))
+                byStatus[label] = (byStatus[label] ?? 0) + 1
+            }
+
 
             const byType: Record<string, number> = {}
             for (const r of rows) {
-                const type = String(r.order_type)
-                byType[type] = (byType[type] ?? 0) + 1
+                const t = String(r.order_type).replace('_', ' ')
+                byType[t] = (byType[t] ?? 0) + 1
             }
-            const typeLines = Object.entries(byType)
-                .map(([type, c]) => `- ${type.replace('_', ' ')}: **${c}**`)
+
+            const statusLines = Object.entries(byStatus)
+                .map(([s, c]) => `- ${s}: **${c}**`)
                 .join('\n')
 
-            let statusBlock = ''
-            if (statuses.length > 1) {
-                const byStatus: Record<string, number> = {}
-                for (const r of rows) {
-                    const status = String(r.status)
-                    byStatus[status] = (byStatus[status] ?? 0) + 1
-                }
-                const statusLines = Object.entries(byStatus)
-                    .map(([status, c]) => `- ${status}: **${c}**`)
-                    .join('\n')
-                statusBlock = `\n\n**By status**\n${statusLines}`
-            }
+            const typeLines = Object.entries(byType)
+                .map(([t, c]) => `- ${t}: **${c}**`)
+                .join('\n')
 
-            return `Order count for **${period}**: **${count} total**.\n\n**By type**\n${typeLines}${statusBlock}`
+            const statusHeader = requestedStatuses.map(statusLabel).join(' + ')
+
+
+            const paidRows = rows.filter((r) => String(r.status) === 'paid')
+            const paidRevenue = paidRows.reduce((s, r) => s + Number(r.grand_total), 0)
+            const revenueNote = paidRows.length > 0
+                ? `\nRevenue from paid orders: **${fmt(paidRevenue, currency)}**`
+                : ''
+
+            return `**${statusHeader} Orders — ${period}**
+
+Total: **${count} order${count === 1 ? '' : 's'}**
+
+**By status**
+${statusLines}
+
+**By type**
+${typeLines}${revenueNote}`
         }
+
 
         case 'highest_order': {
             if (rows.length === 0) {
@@ -90,17 +126,16 @@ ${typeLines}`
 
             const order = rows[0]
             const date = new Date(String(order.created_at)).toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
+                month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit',
             })
 
             return `The highest order for **${period}** was **${fmt(Number(order.grand_total), currency)}** — a ${String(order.order_type).replace('_', ' ')} order placed on ${date}.
 
-Status: **${String(order.status)}**
+Status: **${statusLabel(String(order.status))}**
 Payment method: ${String(order.payment_method ?? 'N/A')}`
         }
+
 
         case 'top_customers_by_orders': {
             if (rows.length === 0) {
@@ -113,7 +148,7 @@ Payment method: ${String(order.payment_method ?? 'N/A')}`
                 .join('\n')
 
             const winnerLine = rankBy === 'spend'
-                ? `**Top spender: ${rows[0].name}** with ${fmt(Number(rows[0].total), currency)} spent.`
+                ? `**Top spender: ${rows[0].name}** with ${fmt(Number(rows[0].total), currency)}.`
                 : `**Most frequent: ${rows[0].name}** with ${rows[0].orders} orders.`
 
             return `Customers ranked for **${period}**:
@@ -122,6 +157,7 @@ ${lines}
 
 ${winnerLine}`
         }
+
 
         case 'avg_ticket': {
             if (rows.length === 0) {
@@ -139,6 +175,7 @@ ${winnerLine}`
 Smallest order: ${fmt(min, currency)}
 Largest order: ${fmt(max, currency)}`
         }
+
 
         case 'top_items': {
             if (rows.length === 0) {
@@ -158,6 +195,7 @@ ${tableRows}
 **#1 winner: ${rows[0].name}** with ${rows[0].quantity} units sold.`
         }
 
+
         case 'low_stock': {
             if (rows.length === 0) {
                 return `All inventory items are above their reorder threshold. Stock levels look healthy! ✓`
@@ -174,12 +212,15 @@ ${lines}
 Place orders for these soon to avoid running out mid-service.`
         }
 
+
         case 'inventory_overview': {
             if (rows.length === 0) {
                 return `No inventory items found. Add your ingredients and supplies in the Inventory section.`
             }
 
-            const lowCount = rows.filter((r) => Number(r.quantity_on_hand) <= Number(r.reorder_threshold)).length
+            const lowCount = rows.filter(
+                (r) => Number(r.quantity_on_hand) <= Number(r.reorder_threshold),
+            ).length
 
             const lines = rows
                 .slice(0, 10)
@@ -198,6 +239,7 @@ Place orders for these soon to avoid running out mid-service.`
 ${lines}${extra}`
         }
 
+
         case 'customer_count': {
             if (rows.length === 0) {
                 return `No registered customers yet. Start adding them through the Customers section or the POS.`
@@ -207,10 +249,7 @@ ${lines}${extra}`
                 const lines = rows
                     .map((r) => `- **${r.full_name}** — ${r.email ?? 'no email'} · ${r.phone ?? 'no phone'} · ${r.loyalty_points} pts`)
                     .join('\n')
-
-                return `**Customer Directory**
-
-${lines}`
+                return `**Customer Directory**\n\n${lines}`
             }
 
             const total = rows.length
@@ -228,6 +267,7 @@ ${lines}`
 Use the Customers page to view loyalty points and contact details.`
         }
 
+
         case 'customer_loyalty': {
             if (rows.length === 0) {
                 return `No customers with loyalty points found yet.`
@@ -244,6 +284,7 @@ ${lines}
 Consider rewarding your top customers with a discount or free item to keep them coming back.`
         }
 
+
         case 'staff_overview': {
             const role = typeof meta.role === 'string' ? meta.role : null
 
@@ -257,28 +298,23 @@ Consider rewarding your top customers with a discount or free item to keep them 
                 const lines = rows
                     .map((r) => `- **${r.full_name}** (${String(r.role).replace('_', ' ')}) — ${r.email ?? 'no email'} · ${r.phone ?? 'no phone'}`)
                     .join('\n')
-
-                return `**Staff Directory**${role ? ` — role: ${role}` : ''}
-
-${lines}`
+                return `**Staff Directory**${role ? ` — role: ${role}` : ''}\n\n${lines}`
             }
 
             const active = rows.filter((r) => r.is_active)
             const inactive = rows.filter((r) => !r.is_active)
 
             const lines = active
-                .slice(0, 10)
+                .slice(0, 15)
                 .map((r) => {
-                    const status = r.today_status === 'present'
-                        ? '🟢 present'
-                        : r.today_status === 'absent'
-                            ? '🔴 absent'
+                    const s = r.today_status === 'present' ? '🟢 present'
+                        : r.today_status === 'absent' ? '🔴 absent'
                             : '⚪ not marked'
-                    return `- **${r.full_name}** (${String(r.role).replace('_', ' ')}) — ${status}`
+                    return `- **${r.full_name}** (${String(r.role).replace('_', ' ')}) — ${s}`
                 })
                 .join('\n')
 
-            return `**Staff Overview**${role ? ` — role: ${role}` : ''}
+            return `**Staff Overview**${role ? ` — ${role}s only` : ''}
 
 - Active staff: **${active.length}**
 - Inactive: **${inactive.length}**
@@ -286,6 +322,7 @@ ${lines}`
 **Today's attendance:**
 ${lines}`
         }
+
 
         case 'menu_performance': {
             const activeItems = rows.filter((r) => r.is_active)
@@ -316,6 +353,7 @@ ${topLines}
 ${zeroSales.length > 0 ? `**No sales yet:** ${zeroSales.map((r) => r.name).join(', ')} — consider a promotion.` : '✓ All active items had at least one sale.'}`
         }
 
+
         case 'vendor_overview': {
             if (rows.length === 0) {
                 return `No vendors found. Add your suppliers in the Vendors section.`
@@ -326,23 +364,23 @@ ${zeroSales.length > 0 ? `**No sales yet:** ${zeroSales.map((r) => r.name).join(
                 .map((r) => `- **${r.name}**${r.phone ? ` · ${r.phone}` : ''}${r.email ? ` · ${r.email}` : ''}`)
                 .join('\n')
 
-            return `**Your Vendors (${rows.length} total):**
-
-${lines}`
+            return `**Your Vendors (${rows.length} total):**\n\n${lines}`
         }
 
-        default:
-            return `I'm not sure how to answer that yet. Here are things I can help you with:
 
-- **Revenue & sales** — "How much did I earn today?" / "Revenue this week"
-- **Orders** — "How many orders today?" / "Average order value" / "Highest paid order"
-- **Top items** — "What are my top 5 selling items?"
-- **Customers** — "How many customers do I have?" / "Which customer ordered the most?" / "Who's my biggest spender?"
-- **Inventory** — "What's low on stock?" / "Show me inventory"
-- **Staff** — "Show me staff overview" / "Who is active today?"
-- **Menu** — "How is my menu performing?"
+        default:
+            return `I'm not sure how to answer that. Here are things I can help you with:
+
+- **Revenue & sales** — "How much did I earn today?" / "Revenue this week" / "Sales this month"
+- **Orders** — "How many orders today?" / "Show me paid and cancelled orders" / "Highest order all time"
+- **Top items** — "What are my top 5 selling items?" / "Best selling items this week"
+- **Average ticket** — "What is my average order value?"
+- **Inventory** — "What's low on stock?" / "Show me all inventory"
+- **Customers** — "How many customers do I have?" / "Who ordered the most?" / "Top loyal customers"
+- **Staff** — "Show staff overview" / "How many cashiers do I have?" / "Who is present today?"
+- **Menu** — "How is my menu performing?" / "Which items have no sales?"
 - **Vendors** — "Show me my vendors"
 
-Try selecting the right data source from the dropdown and rephrasing your question.`
+Try selecting the matching data source from the dropdown above and rephrasing your question.`
     }
 }

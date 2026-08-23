@@ -9,7 +9,7 @@ export interface FetchedData {
     meta: Record<string, unknown>
 }
 
-const STAFF_ROLES = ['cashier', 'manager', 'kitchen', 'owner', 'waiter', 'chef']
+const STAFF_ROLES = ['cashier', 'manager', 'kitchen', 'owner', 'waiter', 'chef', 'barista', 'server', 'cook']
 
 function extractRole(rawMessage: string | undefined): string | null {
     if (!rawMessage) return null
@@ -30,6 +30,7 @@ export async function fetchData(
 
     switch (intent) {
 
+
         case 'revenue_today':
         case 'revenue_range':
         case 'avg_ticket': {
@@ -43,19 +44,15 @@ export async function fetchData(
             if (!dateRange.allTime) {
                 query = query.gte('created_at', dateRange.from).lte('created_at', dateRange.to)
             }
-
             if (locationId) query = query.eq('location_id', locationId)
 
             const { data } = await query
-            return {
-                intent,
-                source,
-                rows: (data ?? []) as Record<string, unknown>[],
-                meta: { dateRange },
-            }
+            return { intent, source, rows: (data ?? []) as Record<string, unknown>[], meta: { dateRange } }
         }
 
+
         case 'order_count': {
+
             const effectiveStatuses = statuses.length > 0 ? statuses : ['paid']
 
             let query = supabase
@@ -68,7 +65,6 @@ export async function fetchData(
             if (!dateRange.allTime) {
                 query = query.gte('created_at', dateRange.from).lte('created_at', dateRange.to)
             }
-
             if (locationId) query = query.eq('location_id', locationId)
 
             const { data } = await query
@@ -79,6 +75,7 @@ export async function fetchData(
                 meta: { dateRange, statuses: effectiveStatuses },
             }
         }
+
 
         case 'highest_order': {
             const effectiveStatuses = statuses.length > 0 ? statuses : ['paid']
@@ -94,17 +91,12 @@ export async function fetchData(
             if (!dateRange.allTime) {
                 query = query.gte('created_at', dateRange.from).lte('created_at', dateRange.to)
             }
-
             if (locationId) query = query.eq('location_id', locationId)
 
             const { data } = await query
-            return {
-                intent,
-                source,
-                rows: (data ?? []) as Record<string, unknown>[],
-                meta: { dateRange, statuses: effectiveStatuses },
-            }
+            return { intent, source, rows: (data ?? []) as Record<string, unknown>[], meta: { dateRange } }
         }
+
 
         case 'top_customers_by_orders': {
             const effectiveStatuses = statuses.length > 0 ? statuses : ['paid']
@@ -119,7 +111,6 @@ export async function fetchData(
             if (!dateRange.allTime) {
                 query = query.gte('created_at', dateRange.from).lte('created_at', dateRange.to)
             }
-
             if (locationId) query = query.eq('location_id', locationId)
 
             const { data } = await query
@@ -128,19 +119,20 @@ export async function fetchData(
             for (const row of data ?? []) {
                 const id = row.customer_id as string
                 if (!id) continue
-                const customerRelation = (row as { customer?: { full_name?: string } }).customer
-                const customerName = customerRelation?.full_name ?? 'Unknown'
-                if (!agg[id]) agg[id] = { name: customerName, orders: 0, total: 0 }
+                const cust = (row as { customer?: { full_name?: string } }).customer
+                const name = cust?.full_name ?? 'Unknown'
+                if (!agg[id]) agg[id] = { name, orders: 0, total: 0 }
                 agg[id].orders += 1
                 agg[id].total += Number(row.grand_total)
             }
 
             const sorted = Object.values(agg)
-                .sort((a, b) => (rankBy === 'spend' ? b.total - a.total : b.orders - a.orders))
+                .sort((a, b) => rankBy === 'spend' ? b.total - a.total : b.orders - a.orders)
                 .slice(0, limit)
 
             return { intent, source, rows: sorted as Record<string, unknown>[], meta: { dateRange, rankBy } }
         }
+
 
         case 'top_items': {
             let query = supabase
@@ -152,7 +144,6 @@ export async function fetchData(
             if (!dateRange.allTime) {
                 query = query.gte('order.created_at', dateRange.from).lte('order.created_at', dateRange.to)
             }
-
             if (locationId) query = query.eq('order.location_id', locationId)
 
             const { data: itemRows } = await query
@@ -179,6 +170,7 @@ export async function fetchData(
             return { intent, source, rows: sorted as Record<string, unknown>[], meta: { dateRange, limit } }
         }
 
+
         case 'low_stock': {
             let query = supabase
                 .from('inventory_items')
@@ -191,9 +183,9 @@ export async function fetchData(
             const lowStock = (data ?? []).filter(
                 (item) => Number(item.quantity_on_hand) <= Number(item.reorder_threshold),
             )
-
             return { intent, source, rows: lowStock as Record<string, unknown>[], meta: {} }
         }
+
 
         case 'inventory_overview': {
             let query = supabase
@@ -208,6 +200,7 @@ export async function fetchData(
             const { data } = await query
             return { intent, source, rows: (data ?? []) as Record<string, unknown>[], meta: {} }
         }
+
 
         case 'customer_count': {
             let query = supabase
@@ -236,6 +229,7 @@ export async function fetchData(
             const { data } = await query
             return { intent, source, rows: (data ?? []) as Record<string, unknown>[], meta: { limit } }
         }
+
 
         case 'staff_overview': {
             const role = extractRole(rawMessage)
@@ -269,6 +263,7 @@ export async function fetchData(
             return { intent, source, rows: enriched as Record<string, unknown>[], meta: { role } }
         }
 
+
         case 'menu_performance': {
             let query = supabase
                 .from('menu_items')
@@ -287,7 +282,9 @@ export async function fetchData(
                 .eq('order.status', 'paid')
 
             if (!dateRange.allTime) {
-                ordersQuery = ordersQuery.gte('order.created_at', dateRange.from).lte('order.created_at', dateRange.to)
+                ordersQuery = ordersQuery
+                    .gte('order.created_at', dateRange.from)
+                    .lte('order.created_at', dateRange.to)
             }
 
             const { data: soldItems } = await ordersQuery
@@ -308,6 +305,7 @@ export async function fetchData(
 
             return { intent, source, rows: enriched as Record<string, unknown>[], meta: { dateRange } }
         }
+
 
         case 'vendor_overview': {
             let query = supabase
