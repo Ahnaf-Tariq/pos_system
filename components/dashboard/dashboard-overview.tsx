@@ -332,12 +332,12 @@ export function DashboardChat({
       {/* ── Header ── */}
       <div className="shrink-0">
         <div className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-primary/15">
             <Sparkles className="size-4 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Assistant</h1>
-            <p className="text-sm text-muted-foreground">Ask anything about {businessName}</p>
+            <h1 className="text-xl font-semibold tracking-tight">AI Assistant</h1>
+            <p className="text-xs text-muted-foreground">Ask anything about {businessName}</p>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { detectIntent, type DataSource } from './intents'
+import { detectAllIntents, type DataSource } from './intents'
 import { extractParams } from './extractor'
 import { fetchData } from './fetcher'
 import { buildResponse } from './responder'
@@ -21,9 +21,14 @@ export async function processMessage({
     currency,
     supabase,
 }: ProcessMessageInput): Promise<{ reply: string }> {
-    const intent = detectIntent(message, source)
+    const intents = detectAllIntents(message, source)
     const params = extractParams(message)
-    const data = await fetchData(supabase, userId, locationId, intent, params, source)
-    const reply = buildResponse(data, params, currency)
-    return { reply }
+
+    const replies: string[] = []
+    for (const intent of intents) {
+        const data = await fetchData(supabase, userId, locationId, intent, params, source, message)
+        replies.push(buildResponse(data, params, currency))
+    }
+
+    return { reply: replies.join('\n\n---\n\n') }
 }
