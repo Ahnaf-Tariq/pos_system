@@ -16,6 +16,8 @@ import type {
   AttendanceStatus,
   CashMovementType,
   CashSessionStatus,
+  ExpenseCategory,
+  ExpensePaymentMethod,
 } from "@/types/enums";
 
 export interface Shop {
@@ -250,6 +252,35 @@ export interface VendorEditorDialogProps {
   locationId: string | null;
   vendor?: Pick<Vendor, "id" | "name" | "phone" | "email"> | null;
   onSaved: (vendor: Vendor) => void;
+}
+
+export interface Expense {
+  id: string;
+  user_id: string;
+  location_id: string;
+  recorded_by: string;
+  vendor_id: string | null;
+  title: string;
+  amount: number;
+  category: ExpenseCategory | string;
+  payment_method: ExpensePaymentMethod | string;
+  expense_date: string;
+  notes: string | null;
+  cash_session_id: string | null;
+  cash_movement_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExpenseListRow extends Expense {
+  vendor_name: string | null;
+  recorded_by_name: string;
+}
+
+export interface ExpenseCategoryTotal {
+  category: string;
+  total: number;
+  count: number;
 }
 
 export interface RestaurantTable {
@@ -551,6 +582,10 @@ export interface ReportBundle {
   discountTotal: number;
   voidCount: number;
   voidTotal: number;
+  expenseTotal: number;
+  expenseCount: number;
+  netProfit: number;
+  expensesByCategory: ExpenseCategoryTotal[];
   byDay: DaySalesPoint[];
   byHour: HourSalesPoint[];
   byPeriod: PeriodSalesPoint[];

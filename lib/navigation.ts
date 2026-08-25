@@ -9,6 +9,7 @@ import {
   Settings,
   Truck,
   Wallet,
+  Receipt,
   ShoppingBag,
   Users,
   UserRound,
@@ -73,6 +74,12 @@ export const NAV_ITEMS: NavItem[] = [
     href: ROUTES.cashDrawer,
     icon: Wallet,
     roles: [StaffRole.OWNER, StaffRole.MANAGER, StaffRole.CASHIER],
+  },
+  {
+    title: 'Expenses',
+    href: ROUTES.expenses,
+    icon: Receipt,
+    roles: [StaffRole.OWNER, StaffRole.MANAGER],
   },
   {
     title: 'Orders',

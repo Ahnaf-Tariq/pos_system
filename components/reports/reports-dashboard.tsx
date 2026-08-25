@@ -85,7 +85,7 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
 
   useRealtimeRefresh({
     userId,
-    tables: ["orders", "order_items"],
+    tables: ["orders", "order_items", "expenses"],
     onChange: () => void refresh({ silent: true }),
     enabled: Boolean(selectedLocationId),
   });
@@ -135,11 +135,22 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
       // Summary Statistics
       csvContent += "=== SUMMARY STATISTICS ===\n";
       csvContent += `Total Revenue,${report.revenue}\n`;
+      csvContent += `Total Expenses,${report.expenseTotal}\n`;
+      csvContent += `Net Profit,${report.netProfit}\n`;
       csvContent += `Paid Orders,${report.paidOrders}\n`;
       csvContent += `Cancelled Orders,${report.voidCount}\n`;
       csvContent += `Total Orders,${report.paidOrders + report.voidCount}\n`;
       csvContent += `Total Discounts,${report.discountTotal}\n`;
+      csvContent += `Expense count,${report.expenseCount}\n`;
       csvContent += `Currency,${currency}\n`;
+
+      if (report.expensesByCategory.length > 0) {
+        csvContent += "\n=== EXPENSES BY CATEGORY ===\n";
+        csvContent += "Category,Total,Count\n";
+        for (const row of report.expensesByCategory) {
+          csvContent += `${row.category},${row.total},${row.count}\n`;
+        }
+      }
 
       const timestamp = new Date().toISOString().split("T")[0];
       const filename = `report-comprehensive-${period}-${timestamp}.csv`;
@@ -296,11 +307,21 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
         <AppLoader fullPage />
       ) : report ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <StatCard
               label="Paid revenue"
               value={formatMoney(report.revenue, currency)}
               hint={`${report.paidOrders} paid orders`}
+            />
+            <StatCard
+              label="Expenses"
+              value={formatMoney(report.expenseTotal, currency)}
+              hint={`${report.expenseCount} expense records`}
+            />
+            <StatCard
+              label="Net profit"
+              value={formatMoney(report.netProfit, currency)}
+              hint="Revenue minus expenses"
             />
             <StatCard
               label="Total orders"
@@ -450,6 +471,34 @@ export function ReportsDashboard({ userId, currency }: ReportsDashboardProps) {
               </ul>
             </section>
           </div>
+
+          <section className="rounded-lg border border-border bg-card p-4">
+            <h2 className="text-sm font-semibold">Expenses by category</h2>
+            <ul className="mt-4 space-y-2">
+              {report.expensesByCategory.length === 0 ? (
+                <li className="text-sm text-muted-foreground">
+                  No expenses in this range.
+                </li>
+              ) : (
+                report.expensesByCategory.map((row) => (
+                  <li
+                    key={row.category}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <span>
+                      {row.category}{" "}
+                      <span className="text-muted-foreground">
+                        · {row.count}
+                      </span>
+                    </span>
+                    <span className="money text-xs">
+                      {formatMoney(row.total, currency)}
+                    </span>
+                  </li>
+                ))
+              )}
+            </ul>
+          </section>
 
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="rounded-lg border border-border bg-card p-4">

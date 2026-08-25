@@ -86,3 +86,21 @@ export enum CashMovementType {
   CASH_IN = "cash_in",
   CASH_OUT = "cash_out",
 }
+
+export enum ExpenseCategory {
+  RENT = "rent",
+  UTILITIES = "utilities",
+  SUPPLIES = "supplies",
+  PAYROLL = "payroll",
+  MARKETING = "marketing",
+  MAINTENANCE = "maintenance",
+  FOOD_COST = "food_cost",
+  TRANSPORT = "transport",
+  OTHER = "other",
+}
+
+export enum ExpensePaymentMethod {
+  CASH = "cash",
+  CARD = "card",
+  BANK_TRANSFER = "bank_transfer",
+}

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { OrderStatus } from "@/types/enums";
 import type {
   DaySalesPoint,
+  ExpenseCategoryTotal,
   HourSalesPoint,
   ItemRanking,
   PeriodSalesPoint,
@@ -10,6 +11,7 @@ import type {
   SalesPeriod,
   StaffPerformance,
 } from "@/types/interfaces";
+import { formatExpenseCategory } from "@/lib/expenses/catalog";
 
 function localDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -240,6 +242,49 @@ export async function fetchReportBundle(
     }
   }
 
+  let expenseQuery = supabase
+    .from("expenses")
+    .select("amount, category, expense_date")
+    .eq("user_id", userId);
+
+  if (filters.locationId) {
+    expenseQuery = expenseQuery.eq("location_id", filters.locationId);
+  }
+  if (filters.fromDate) {
+    expenseQuery = expenseQuery.gte("expense_date", filters.fromDate);
+  }
+  if (filters.toDate) {
+    expenseQuery = expenseQuery.lte("expense_date", filters.toDate);
+  }
+
+  const { data: expenseRows, error: expenseError } = await expenseQuery;
+  if (expenseError) throw new Error(expenseError.message);
+
+  const expenses = expenseRows ?? [];
+  const expenseTotal = expenses.reduce(
+    (sum, row) => sum + Number(row.amount ?? 0),
+    0,
+  );
+  const categoryMap = new Map<string, ExpenseCategoryTotal>();
+  for (const row of expenses) {
+    const category = (row.category as string) || "other";
+    const current = categoryMap.get(category) ?? {
+      category,
+      total: 0,
+      count: 0,
+    };
+    current.total += Number(row.amount ?? 0);
+    current.count += 1;
+    categoryMap.set(category, current);
+  }
+  const expensesByCategory = [...categoryMap.values()]
+    .map((row) => ({
+      ...row,
+      total: Math.round(row.total * 100) / 100,
+      category: formatExpenseCategory(row.category),
+    }))
+    .sort((a, b) => b.total - a.total);
+
   return {
     paidOrders: paid.length,
     revenue,
@@ -247,6 +292,10 @@ export async function fetchReportBundle(
     discountTotal,
     voidCount: voids.length,
     voidTotal,
+    expenseTotal: Math.round(expenseTotal * 100) / 100,
+    expenseCount: expenses.length,
+    netProfit: Math.round((revenue - expenseTotal) * 100) / 100,
+    expensesByCategory,
     byDay: [...byDayMap.values()].sort((a, b) => a.date.localeCompare(b.date)),
     byHour: [...byHourMap.values()].sort((a, b) => a.hour - b.hour),
     byPeriod: [...byPeriodMap.values()].sort((a, b) =>
