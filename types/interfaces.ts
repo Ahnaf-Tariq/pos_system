@@ -414,6 +414,9 @@ export interface OrderDetailItem extends OrderItem {
 
 export interface OrderDetail extends OrderListRow {
   items: OrderDetailItem[];
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
 }
 
 export interface KdsTicketItem extends OrderItem {
@@ -698,6 +701,7 @@ export interface OfflineOrderRecord {
   payment_method: PaymentMethod | null;
   items: CartLineItem[];
   notes: string | null;
+  kds_enabled?: boolean;
   pending_sync: boolean;
   action: OfflineOrderAction;
   created_at: string;

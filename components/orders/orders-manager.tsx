@@ -33,11 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { AppLoader } from "@/components/ui/app-loader";
-import {
-  arrayToCsv,
-  downloadCsv,
-  ordersToExportData,
-} from "@/lib/data-export";
+import { arrayToCsv, downloadCsv, ordersToExportData } from "@/lib/data-export";
 
 interface OrdersManagerProps {
   userId: string;
@@ -391,6 +387,22 @@ export function OrdersManager({ userId, currency, role }: OrdersManagerProps) {
                   </li>
                 ))}
               </ul>
+
+              {detail.customer_name ? (
+                <div className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+                  <p className="text-xs text-muted-foreground">Customer</p>
+                  <p className="mt-0.5 font-medium text-foreground">
+                    {detail.customer_name}
+                  </p>
+                  {(detail.customer_phone || detail.customer_email) && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {[detail.customer_phone, detail.customer_email]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
+                </div>
+              ) : null}
 
               <div className="space-y-1 border-t border-border pt-3 text-sm">
                 <div className="flex justify-between text-muted-foreground">

@@ -3,16 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Plus, Printer, Send, Wallet } from "lucide-react";
+import { Plus, Printer, Send, Settings2, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type {
-  Category,
-  Customer,
-  MenuItemWithGroups,
-  RestaurantTable,
-  SelectedModifier,
+import {
+  WriteQueueType,
+  type Category,
+  type Customer,
+  type MenuItemWithGroups,
+  type RestaurantTable,
+  type SelectedModifier,
 } from "@/types/interfaces";
-import { OrderType, type PaymentMethod } from "@/types/enums";
+import { OrderType, TableStatus, type PaymentMethod } from "@/types/enums";
 import {
   getCartGrandTotal,
   getCartSubtotal,
@@ -35,7 +36,7 @@ import {
   assertRecipeStockForCart,
   RecipeStockError,
 } from "@/lib/inventory/deduct";
-import { formatMoney } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import { useLocationContext } from "@/components/dashboard/location-provider";
 import { useShopRealtime } from "@/hooks/use-shop-realtime";
@@ -48,6 +49,14 @@ import { Select } from "antd";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { queueWrite } from "@/lib/offline/write-queue";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 interface PosTerminalProps {
   userId: string;
@@ -76,6 +85,8 @@ export function PosTerminal({
 }: PosTerminalProps) {
   const router = useRouter();
   const { selectedLocationId } = useLocationContext();
+  const [statusTable, setStatusTable] = useState<RestaurantTable | null>(null);
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   const menuQuery = useOfflineQuery({
     cacheKey: selectedLocationId
@@ -118,11 +129,16 @@ export function PosTerminal({
   const menuItems = menuQuery.data?.items ?? items;
   const customerList = customersQuery.data ?? initialCustomers;
   const tables = tablesQuery.data ?? initialTables;
-  const dataLoading = menuQuery.loading || customersQuery.loading || tablesQuery.loading;
+  const dataLoading =
+    menuQuery.loading || customersQuery.loading || tablesQuery.loading;
   const fromCache =
     menuQuery.fromCache || customersQuery.fromCache || tablesQuery.fromCache;
   const lastSyncedAt =
-    [menuQuery.lastSyncedAt, customersQuery.lastSyncedAt, tablesQuery.lastSyncedAt]
+    [
+      menuQuery.lastSyncedAt,
+      customersQuery.lastSyncedAt,
+      tablesQuery.lastSyncedAt,
+    ]
       .filter(Boolean)
       .sort()
       .pop() ?? null;
@@ -202,7 +218,10 @@ export function PosTerminal({
   }, [selectedLocationId, clearCart]);
 
   useEffect(() => {
-    if (customerId && !customerList.some((customer) => customer.id === customerId)) {
+    if (
+      customerId &&
+      !customerList.some((customer) => customer.id === customerId)
+    ) {
       setCustomerId(null);
     }
   }, [customerId, customerList, setCustomerId]);
@@ -215,9 +234,14 @@ export function PosTerminal({
 
   useEffect(() => {
     if (!initialTableId) return;
+    const table = locationTables.find((item) => item.id === initialTableId);
+    if (!table || table.status !== TableStatus.AVAILABLE) {
+      return;
+    }
+
     setOrderType(OrderType.DINE_IN);
     setTableId(initialTableId);
-  }, [initialTableId, setOrderType, setTableId]);
+  }, [initialTableId, locationTables, setOrderType, setTableId]);
 
   useShopRealtime({
     userId,
@@ -278,6 +302,8 @@ export function PosTerminal({
 
     try {
       const online = await checkConnectivity();
+      let orderKdsEnabled = kdsEnabled;
+
       if (online) {
         const supabase = createClient();
         await assertRecipeStockForCart({
@@ -286,6 +312,13 @@ export function PosTerminal({
           locationId: selectedLocationId,
           items: cartItems,
         });
+
+        const { data: shopFlags } = await supabase
+          .from("users")
+          .select("kds_enabled")
+          .eq("user_id", userId)
+          .maybeSingle();
+        orderKdsEnabled = shopFlags?.kds_enabled !== false;
       }
 
       await enqueueOfflineOrder({
@@ -305,6 +338,7 @@ export function PosTerminal({
         items: cartItems,
         notes: null,
         action,
+        kds_enabled: orderKdsEnabled,
       });
 
       if (online) {
@@ -327,14 +361,22 @@ export function PosTerminal({
             toast.success("Payment recorded.");
           }
         } else {
-          toast.success("Order queued and sent to kitchen.");
+          toast.success(
+            orderKdsEnabled
+              ? "Order queued and sent to kitchen."
+              : "Order saved.",
+          );
         }
       } else if (action === "pay") {
         toast.success(
           "Payment saved offline. Print receipt when you are back online.",
         );
       } else {
-        toast.success("Order queued and sent to kitchen.");
+        toast.success(
+          orderKdsEnabled
+            ? "Order queued and sent to kitchen."
+            : "Order saved offline.",
+        );
       }
 
       clearCart();
@@ -345,6 +387,60 @@ export function PosTerminal({
       if (err instanceof RecipeStockError) router.push(ROUTES.inventory);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function updateTableStatus(
+    table: RestaurantTable,
+    status: TableStatus,
+  ) {
+    if (!selectedLocationId) return;
+    setStatusUpdating(true);
+
+    try {
+      const online = await checkConnectivity();
+      if (online) {
+        const supabase = createClient();
+
+        const { error } = await supabase
+          .from("restaurant_tables")
+          .update({ status })
+          .eq("id", table.id)
+          .eq("user_id", userId)
+          .eq("location_id", selectedLocationId);
+
+        if (error) throw new Error(error.message);
+      } else {
+        await queueWrite({
+          type: WriteQueueType.TABLE_UPDATE_STATUS,
+          payload: {
+            userId,
+            tableId: table.id,
+            locationId: selectedLocationId,
+            status,
+            tableLabel: table.label,
+            previousStatus: table.status,
+          },
+        });
+      }
+
+      if (tableId === table.id && status !== TableStatus.AVAILABLE) {
+        setTableId(null);
+      }
+
+      setStatusTable(null);
+      toast.success(
+        online
+          ? `${table.label} changed to ${status}`
+          : "Table status change queued for sync",
+      );
+      await tablesQuery.refresh();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not update table status",
+      );
+    } finally {
+      setStatusUpdating(false);
     }
   }
 
@@ -360,7 +456,8 @@ export function PosTerminal({
         </div>
       </div>
 
-      {(menuQuery.noCachedData || customersQuery.noCachedData) && !dataLoading ? (
+      {(menuQuery.noCachedData || customersQuery.noCachedData) &&
+      !dataLoading ? (
         <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
           No cached menu data yet. Connect once while online to download.
         </p>
@@ -396,21 +493,62 @@ export function PosTerminal({
                     No tables for this location yet. Add them in Tables.
                   </p>
                 ) : (
-                  locationTables.map((table) => (
-                    <Button
-                      key={table.id}
-                      type="button"
-                      size="sm"
-                      variant={tableId === table.id ? "default" : "outline"}
-                      className="min-h-10"
-                      onClick={() => setTableId(table.id)}
-                    >
-                      {table.label}
-                      <Badge variant="secondary" className="ml-1 capitalize">
-                        {table.status}
-                      </Badge>
-                    </Button>
-                  ))
+                  locationTables.map((table) => {
+                    const isAvailable = table.status === TableStatus.AVAILABLE;
+                    const isSelected = tableId === table.id;
+
+                    return (
+                      <div
+                        key={table.id}
+                        className={cn(
+                          "inline-flex items-center overflow-hidden rounded-md border text-xs transition-colors",
+                          isSelected
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-input bg-background",
+                          !isAvailable && "cursor-not-allowed opacity-60",
+                        )}
+                      >
+                        <button
+                          type="button"
+                          disabled={!isAvailable}
+                          className="flex h-10 items-center gap-2 px-3 hover:bg-accent/50 disabled:pointer-events-none"
+                          onClick={() => {
+                            if (!isAvailable) return;
+                            setTableId(isSelected ? null : table.id);
+                          }}
+                        >
+                          <span className="font-medium">{table.label}</span>
+                          <Badge
+                            variant={isAvailable ? "secondary" : "destructive"}
+                            className="capitalize"
+                          >
+                            {table.status}
+                          </Badge>
+                        </button>
+
+                        <div
+                          className={cn(
+                            "h-5 w-px",
+                            isSelected
+                              ? "bg-primary-foreground/30"
+                              : "bg-border",
+                          )}
+                        />
+
+                        <button
+                          type="button"
+                          title={`Change ${table.label} status`}
+                          className="flex h-10 w-8 items-center justify-center hover:bg-accent/50"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setStatusTable(table);
+                          }}
+                        >
+                          <Settings2 className="size-4" />
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             ) : null}
@@ -428,8 +566,7 @@ export function PosTerminal({
                 value={customerId ?? ""}
                 onChange={(value) => setCustomerId(value ? value : null)}
                 options={customerOptions}
-                showSearch
-                optionFilterProp="label"
+                showSearch={{ optionFilterProp: "label" }}
                 popupRender={(menu) => (
                   <>
                     {menu}
@@ -587,7 +724,9 @@ export function PosTerminal({
               </div>
             </div>
 
-            <div className={kdsEnabled ? "grid grid-cols-2 gap-2" : "grid gap-2"}>
+            <div
+              className={kdsEnabled ? "grid grid-cols-2 gap-2" : "grid gap-2"}
+            >
               {kdsEnabled ? (
                 <Button
                   type="button"
@@ -641,6 +780,70 @@ export function PosTerminal({
         showLoyalty={false}
         onSaved={handleCustomerSaved}
       />
+
+      <Dialog
+        open={Boolean(statusTable)}
+        onOpenChange={(open) => {
+          if (!open && !statusUpdating) {
+            setStatusTable(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change {statusTable?.label} status</DialogTitle>
+
+            <DialogDescription>
+              Update the table status directly from the POS.
+            </DialogDescription>
+          </DialogHeader>
+
+          {statusTable ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-border bg-secondary/20 px-3 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">
+                    {statusTable.label}
+                  </span>
+
+                  <Badge
+                    variant={
+                      statusTable.status === TableStatus.AVAILABLE
+                        ? "secondary"
+                        : "destructive"
+                    }
+                    className="capitalize"
+                  >
+                    {statusTable.status}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  TableStatus.AVAILABLE,
+                  TableStatus.OCCUPIED,
+                  TableStatus.RESERVED,
+                  TableStatus.DIRTY,
+                ].map((status) => (
+                  <Button
+                    key={status}
+                    type="button"
+                    variant={
+                      statusTable.status === status ? "default" : "outline"
+                    }
+                    className="min-h-11 capitalize"
+                    disabled={statusUpdating}
+                    onClick={() => void updateTableStatus(statusTable, status)}
+                  >
+                    {status}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

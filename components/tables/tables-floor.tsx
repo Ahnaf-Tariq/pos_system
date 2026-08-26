@@ -5,7 +5,13 @@ import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { ArrowRightLeft, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { fetchTablesWithOrders, tableStatusStyles } from "@/lib/tables/floor";
+import {
+  elapsedBadgeTone,
+  fetchTablesWithOrders,
+  formatElapsed,
+  tableElapsedMinutes,
+  tableStatusStyles,
+} from "@/lib/tables/floor";
 import type { TableWithOrder } from "@/types/interfaces";
 import { useShopRealtime } from "@/hooks/use-shop-realtime";
 import { useLocationContext } from "@/components/dashboard/location-provider";
@@ -112,6 +118,28 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [statusFilters, setStatusFilters] = useState<TableStatus[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  function renderElapsed(openedAt: string) {
+    const minutes = tableElapsedMinutes(openedAt, now);
+    const tone = elapsedBadgeTone(minutes);
+    const toneClass =
+      tone === "hot"
+        ? "text-destructive font-semibold"
+        : tone === "warn"
+          ? "text-warning font-medium"
+          : "text-muted-foreground";
+    return (
+      <span className={cn("text-xs tabular-nums", toneClass)}>
+        Open {formatElapsed(minutes)}
+      </span>
+    );
+  }
 
   useShopRealtime({
     userId,
@@ -200,7 +228,9 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
       toast.success(isOnline ? "Table created" : "Table queued for sync");
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create table");
+      toast.error(
+        err instanceof Error ? err.message : "Could not create table",
+      );
     } finally {
       setBusy(false);
     }
@@ -225,7 +255,8 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
           status === TableStatus.AVAILABLE &&
           selected.status !== TableStatus.AVAILABLE
         ) {
-          const { notifyTableFreed } = await import("@/lib/notifications/create");
+          const { notifyTableFreed } =
+            await import("@/lib/notifications/create");
           await notifyTableFreed(supabase, {
             userId,
             locationId: selected.location_id,
@@ -250,7 +281,9 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
       toast.success(isOnline ? "Table status updated" : "Status change queued");
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not update status");
+      toast.error(
+        err instanceof Error ? err.message : "Could not update status",
+      );
     } finally {
       setBusy(false);
     }
@@ -285,7 +318,9 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
       setDeleteOpen(false);
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not delete table");
+      toast.error(
+        err instanceof Error ? err.message : "Could not delete table",
+      );
     } finally {
       setDeleteLoading(false);
     }
@@ -345,10 +380,14 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
 
       setTransferOpen(false);
       setTargetTableId("");
-      toast.success(isOnline ? "Order transferred" : "Transfer queued for sync");
+      toast.success(
+        isOnline ? "Order transferred" : "Transfer queued for sync",
+      );
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not transfer order");
+      toast.error(
+        err instanceof Error ? err.message : "Could not transfer order",
+      );
     } finally {
       setBusy(false);
     }
@@ -433,7 +472,9 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
       toast.success(isOnline ? "Orders merged" : "Merge queued for sync");
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not merge orders");
+      toast.error(
+        err instanceof Error ? err.message : "Could not merge orders",
+      );
     } finally {
       setBusy(false);
     }
@@ -540,9 +581,15 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
                 {table.seats} seats
               </p>
               {table.activeOrder ? (
-                <p className="money mt-3 text-sm">
-                  {formatMoney(Number(table.activeOrder.grand_total), currency)}
-                </p>
+                <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <p className="money text-sm">
+                    {formatMoney(
+                      Number(table.activeOrder.grand_total),
+                      currency,
+                    )}
+                  </p>
+                  {renderElapsed(table.activeOrder.created_at)}
+                </div>
               ) : (
                 <p className="mt-3 text-xs text-muted-foreground">
                   No open order
@@ -569,12 +616,15 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
           {selected?.activeOrder ? (
             <div className="rounded-md border border-border bg-secondary/30 px-3 py-2 text-sm">
               <p className="text-muted-foreground">Active order</p>
-              <p className="money mt-1">
-                {formatMoney(
-                  Number(selected.activeOrder.grand_total),
-                  currency,
-                )}
-              </p>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <p className="money">
+                  {formatMoney(
+                    Number(selected.activeOrder.grand_total),
+                    currency,
+                  )}
+                </p>
+                {renderElapsed(selected.activeOrder.created_at)}
+              </div>
               <p className="mt-1 text-xs capitalize text-muted-foreground">
                 {formatOrderStatus(selected.activeOrder.status)}
               </p>

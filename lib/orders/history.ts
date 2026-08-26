@@ -127,7 +127,7 @@ export async function fetchOrderDetail(
   if (error) throw new Error(error.message);
   if (!order) return null;
 
-  const [{ data: items }, { data: table }, { data: profile }] =
+  const [{ data: items }, { data: table }, { data: profile }, { data: customer }] =
     await Promise.all([
       supabase
         .from("order_items")
@@ -149,6 +149,20 @@ export async function fetchOrderDetail(
             .maybeSingle()
         : Promise.resolve({
             data: null as { full_name: string | null } | null,
+          }),
+      order.customer_id
+        ? supabase
+            .from("customers")
+            .select("full_name, phone, email")
+            .eq("id", order.customer_id)
+            .eq("user_id", userId)
+            .maybeSingle()
+        : Promise.resolve({
+            data: null as {
+              full_name: string;
+              phone: string | null;
+              email: string | null;
+            } | null,
           }),
     ]);
 
@@ -177,6 +191,9 @@ export async function fetchOrderDetail(
     opened_by_name: profile?.full_name ?? null,
     item_count: detailItems.length,
     items: detailItems,
+    customer_name: customer?.full_name?.trim() || null,
+    customer_phone: customer?.phone?.trim() || null,
+    customer_email: customer?.email?.trim() || null,
   };
 }
 

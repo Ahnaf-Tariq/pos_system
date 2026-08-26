@@ -10,6 +10,10 @@ import { ImagePlus, Pencil, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fetchShopSettings, uploadReceiptLogo } from "@/lib/settings/catalog";
 import {
+  getCachedDashboardSession,
+  setCachedDashboardSession,
+} from "@/lib/offline/session-cache";
+import {
   businessProfileSchema,
   CURRENCIES,
   locationSchema,
@@ -139,6 +143,24 @@ export function SettingsManager({ userId }: SettingsManagerProps) {
       return;
     }
     toast.success("Business profile saved");
+
+    const cached = await getCachedDashboardSession();
+    if (cached && cached.shop.user_id === userId) {
+      await setCachedDashboardSession({
+        ...cached,
+        shop: {
+          ...cached.shop,
+          business_name: values.business_name.trim(),
+          business_type: values.business_type,
+          timezone: values.timezone,
+          currency: values.currency.toUpperCase(),
+          tax_rate: values.tax_rate,
+          salary_pay_basis: values.salary_pay_basis,
+          kds_enabled: values.kds_enabled,
+        },
+      });
+    }
+
     await refresh();
     router.refresh();
   }
