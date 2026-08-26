@@ -9,6 +9,9 @@ import type { KdsTicket } from '@/types/interfaces'
 import { playNewOrderChime } from '@/lib/kds/chime'
 import { useShopRealtime } from '@/hooks/use-shop-realtime'
 import { useLocationContext } from '@/components/dashboard/location-provider'
+import { useOfflineQuery } from '@/hooks/use-offline-query'
+import { kdsCacheKey } from '@/lib/offline/cache-keys'
+import { CacheSyncNote } from '@/components/offline/cache-sync-note'
 import { StationColumn } from '@/components/kds/station-column'
 import { KdsStatus } from '@/types/enums'
 import { Badge } from '@/components/ui/badge'
@@ -21,51 +24,54 @@ interface KdsBoardProps {
 
 export function KdsBoard({ userId, currency }: KdsBoardProps) {
   const { selectedLocationId, selectedLocation } = useLocationContext()
-  const [tickets, setTickets] = useState<KdsTicket[]>([])
-  const [loading, setLoading] = useState(true)
   const [alertVisible, setAlertVisible] = useState(false)
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set())
   const knownIdsRef = useRef<Set<string> | null>(null)
 
-  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!selectedLocationId) {
-      setTickets([])
-      setLoading(false)
-      return
-    }
-
-    if (!opts?.silent) setLoading(true)
-    try {
+  const ticketsQuery = useOfflineQuery({
+    cacheKey: selectedLocationId ? kdsCacheKey(userId, selectedLocationId) : 'kds:disabled',
+    enabled: Boolean(selectedLocationId),
+    fetchFn: async () => {
       const supabase = createClient()
-      const nextTickets = await fetchKdsTickets(supabase, userId, selectedLocationId)
+      return fetchKdsTickets(supabase, userId, selectedLocationId!)
+    },
+  })
 
-      const nextIds = new Set(nextTickets.map((ticket) => ticket.order.id))
-      if (knownIdsRef.current) {
-        const newcomers = [...nextIds].filter((id) => !knownIdsRef.current!.has(id))
-        if (newcomers.length > 0) {
-          playNewOrderChime()
-          setAlertVisible(true)
-          setHighlightedIds(new Set(newcomers))
-          window.setTimeout(() => {
-            setAlertVisible(false)
-            setHighlightedIds(new Set())
-          }, 4000)
-        }
+  const tickets = ticketsQuery.data ?? []
+  const loading = ticketsQuery.loading
+
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!selectedLocationId) return
+      if (opts?.silent) {
+        void ticketsQuery.refresh()
+        return
       }
-      knownIdsRef.current = nextIds
-      setTickets(nextTickets)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not load kitchen tickets'
-      toast.error(message)
-    } finally {
-      setLoading(false)
+      await ticketsQuery.refresh()
+    },
+    [selectedLocationId, ticketsQuery.refresh]
+  )
+
+  useEffect(() => {
+    const nextIds = new Set(tickets.map((ticket) => ticket.order.id))
+    if (knownIdsRef.current) {
+      const newcomers = [...nextIds].filter((id) => !knownIdsRef.current!.has(id))
+      if (newcomers.length > 0) {
+        playNewOrderChime()
+        setAlertVisible(true)
+        setHighlightedIds(new Set(newcomers))
+        window.setTimeout(() => {
+          setAlertVisible(false)
+          setHighlightedIds(new Set())
+        }, 4000)
+      }
     }
-  }, [selectedLocationId, userId])
+    knownIdsRef.current = nextIds
+  }, [tickets])
 
   useEffect(() => {
     knownIdsRef.current = null
-    void refresh()
-  }, [refresh])
+  }, [selectedLocationId])
 
   useShopRealtime({
     userId,
@@ -91,6 +97,10 @@ export function KdsBoard({ userId, currency }: KdsBoardProps) {
           <p className="mt-1 text-sm text-muted-foreground">
             Live tickets for {selectedLocation?.name ?? 'your location'}
           </p>
+          <CacheSyncNote
+            fromCache={ticketsQuery.fromCache}
+            lastSyncedAt={ticketsQuery.lastSyncedAt}
+          />
         </div>
         <div className="flex items-center gap-2">
           {alertVisible ? (
@@ -102,20 +112,26 @@ export function KdsBoard({ userId, currency }: KdsBoardProps) {
         </div>
       </div>
 
+      {ticketsQuery.noCachedData && !loading ? (
+        <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+          No cached kitchen tickets yet. Connect once while online to download.
+        </p>
+      ) : null}
+
       {!selectedLocationId ? (
         <p className="text-sm text-muted-foreground">Select a location in the header.</p>
-      ) : loading && tickets.length === 0 ? (
+      ) : loading ? (
         <AppLoader fullPage />
       ) : (
-        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto">
+        <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-3">
           <StationColumn
             title="Pending"
             stage={KdsStatus.PENDING}
             tickets={columns.pending}
             userId={userId}
             currency={currency}
+            onChanged={() => void refresh({ silent: true })}
             highlightedIds={highlightedIds}
-            onChanged={refresh}
           />
           <StationColumn
             title="Preparing"
@@ -123,8 +139,8 @@ export function KdsBoard({ userId, currency }: KdsBoardProps) {
             tickets={columns.preparing}
             userId={userId}
             currency={currency}
+            onChanged={() => void refresh({ silent: true })}
             highlightedIds={highlightedIds}
-            onChanged={refresh}
           />
           <StationColumn
             title="Ready"
@@ -132,8 +148,8 @@ export function KdsBoard({ userId, currency }: KdsBoardProps) {
             tickets={columns.ready}
             userId={userId}
             currency={currency}
+            onChanged={() => void refresh({ silent: true })}
             highlightedIds={highlightedIds}
-            onChanged={refresh}
           />
         </div>
       )}

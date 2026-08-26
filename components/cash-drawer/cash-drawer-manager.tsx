@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, Wallet, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +13,7 @@ import {
 import { CashMovementType, CashSessionStatus } from "@/types/enums";
 import type {
   CashDrawerPageData,
+  CashMovement,
   CashSessionHistoryRow,
 } from "@/types/interfaces";
 import type {
@@ -22,6 +23,11 @@ import type {
 } from "@/lib/validations/cash-drawer";
 import { useLocationContext } from "@/components/dashboard/location-provider";
 import { useRealtimeRefresh } from "@/hooks/use-realtime-refresh";
+import { useOfflineQuery } from "@/hooks/use-offline-query";
+import { cashDrawerCacheKey } from "@/lib/offline/cache-keys";
+import { queueWrite, WriteQueueType } from "@/lib/offline/write-queue";
+import { checkConnectivity } from "@/lib/offline/network";
+import { CacheSyncNote } from "@/components/offline/cache-sync-note";
 import { useTablePagination } from "@/hooks/use-table-pagination";
 import { cn, formatDateTime, formatMoney } from "@/lib/utils";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -75,49 +81,60 @@ export function CashDrawerManager({
   currency,
 }: CashDrawerManagerProps) {
   const { selectedLocationId } = useLocationContext();
-  const [data, setData] = useState<CashDrawerPageData>({
+
+  const drawerQuery = useOfflineQuery({
+    cacheKey: selectedLocationId
+      ? cashDrawerCacheKey(userId, selectedLocationId)
+      : "cash-drawer:disabled",
+    enabled: Boolean(selectedLocationId),
+    fetchFn: async () => {
+      const supabase = createClient();
+      return fetchCashDrawerPage(supabase, userId, selectedLocationId!);
+    },
+  });
+
+  const data = drawerQuery.data ?? {
     openSession: null,
     movements: [],
     history: [],
-  });
-  const [loading, setLoading] = useState(true);
+  };
+  const loading = drawerQuery.loading;
+
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!selectedLocationId) return;
+      if (opts?.silent) {
+        void drawerQuery.refresh();
+        return;
+      }
+      await drawerQuery.refresh();
+    },
+    [selectedLocationId, drawerQuery.refresh],
+  );
   const [openDrawerOpen, setOpenDrawerOpen] = useState(false);
   const [closeDrawerOpen, setCloseDrawerOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-
-  const refresh = useCallback(
-    async (opts?: { silent?: boolean }) => {
-      if (!selectedLocationId) {
-        setData({ openSession: null, movements: [], history: [] });
-        setLoading(false);
-        return;
-      }
-      if (!opts?.silent) setLoading(true);
-      try {
-        const supabase = createClient();
-        setData(
-          await fetchCashDrawerPage(supabase, userId, selectedLocationId),
-        );
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Could not load cash drawer";
-        toast.error(message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [userId, selectedLocationId],
+  const [optimisticOpenSession, setOptimisticOpenSession] =
+    useState<CashSessionHistoryRow | null>(null);
+  const [optimisticMovements, setOptimisticMovements] = useState<CashMovement[]>(
+    [],
   );
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const mergedData = useMemo<CashDrawerPageData>(() => {
+    const openSession = optimisticOpenSession ?? data.openSession;
+    const movements = [...optimisticMovements, ...data.movements];
+    return { openSession, movements, history: data.history };
+  }, [data, optimisticOpenSession, optimisticMovements]);
 
   useRealtimeRefresh({
     userId,
     tables: ["cash_sessions", "cash_movements", "orders"],
-    onChange: () => void refresh({ silent: true }),
+    onChange: () => {
+      setOptimisticOpenSession(null);
+      setOptimisticMovements([]);
+      void refresh({ silent: true });
+    },
     enabled: Boolean(selectedLocationId),
   });
 
@@ -129,22 +146,60 @@ export function CashDrawerManager({
     totalItems,
     from,
     to,
-  } = useTablePagination(data.history);
+  } = useTablePagination(mergedData.history);
 
   async function handleOpenDrawer(values: OpenDrawerInput) {
     if (!selectedLocationId) {
       toast.error("Select a location in the header first");
       return;
     }
+    const isOnline = await checkConnectivity();
     try {
-      const supabase = createClient();
-      await openCashSession(supabase, {
-        userId,
-        locationId: selectedLocationId,
-        openedBy: authId,
-        openingBalance: values.opening_balance,
-      });
-      toast.success("Drawer opened");
+      if (isOnline) {
+        const supabase = createClient();
+        await openCashSession(supabase, {
+          userId,
+          locationId: selectedLocationId,
+          openedBy: authId,
+          openingBalance: values.opening_balance,
+        });
+      } else {
+        const clientId = crypto.randomUUID();
+        await queueWrite({
+          type: WriteQueueType.CASH_SESSION_OPEN,
+          clientGeneratedId: clientId,
+          payload: {
+            userId,
+            locationId: selectedLocationId,
+            openedBy: authId,
+            openingBalance: values.opening_balance,
+          },
+        });
+        setOptimisticOpenSession({
+          id: clientId,
+          user_id: userId,
+          location_id: selectedLocationId,
+          opened_by: authId,
+          closed_by: null,
+          opened_at: new Date().toISOString(),
+          closed_at: null,
+          opening_balance: values.opening_balance,
+          closing_balance_expected: null,
+          closing_balance_actual: null,
+          variance: null,
+          notes: null,
+          status: CashSessionStatus.OPEN,
+          opened_by_name: "You",
+          opened_by_staff_id: null,
+          closed_by_name: null,
+          closed_by_staff_id: null,
+          cash_sales: 0,
+          cash_in_total: 0,
+          cash_out_total: 0,
+          expected_in_drawer: values.opening_balance,
+        });
+      }
+      toast.success(isOnline ? "Drawer opened" : "Drawer open queued for sync");
       setOpenDrawerOpen(false);
       await refresh();
     } catch (err) {
@@ -153,19 +208,37 @@ export function CashDrawerManager({
   }
 
   async function handleCloseDrawer(values: CloseDrawerInput) {
-    const session = data.openSession;
-    if (!session) return;
+    const session = mergedData.openSession;
+    if (!session || !selectedLocationId) return;
+    const isOnline = await checkConnectivity();
     try {
-      const supabase = createClient();
-      await closeCashSession(supabase, {
-        userId,
-        sessionId: session.id,
-        closedBy: authId,
-        expected: session.expected_in_drawer,
-        actual: values.closing_balance_actual,
-        notes: values.notes,
-      });
-      toast.success("Drawer closed");
+      if (isOnline) {
+        const supabase = createClient();
+        await closeCashSession(supabase, {
+          userId,
+          sessionId: session.id,
+          closedBy: authId,
+          expected: session.expected_in_drawer,
+          actual: values.closing_balance_actual,
+          notes: values.notes,
+        });
+      } else {
+        await queueWrite({
+          type: WriteQueueType.CASH_SESSION_CLOSE,
+          payload: {
+            userId,
+            locationId: selectedLocationId,
+            sessionId: session.id,
+            closedBy: authId,
+            expected: session.expected_in_drawer,
+            actual: values.closing_balance_actual,
+            notes: values.notes,
+          },
+        });
+        setOptimisticOpenSession(null);
+        setOptimisticMovements([]);
+      }
+      toast.success(isOnline ? "Drawer closed" : "Drawer close queued for sync");
       setCloseDrawerOpen(false);
       await refresh();
     } catch (err) {
@@ -176,18 +249,47 @@ export function CashDrawerManager({
   }
 
   async function handleAddMovement(values: CashMovementInput) {
-    const session = data.openSession;
-    if (!session) return;
+    const session = mergedData.openSession;
+    if (!session || !selectedLocationId) return;
+    const isOnline = await checkConnectivity();
     try {
-      const supabase = createClient();
-      await addCashMovement(supabase, {
-        userId,
-        sessionId: session.id,
-        type: values.type,
-        amount: values.amount,
-        reason: values.reason,
-      });
-      toast.success("Movement recorded");
+      if (isOnline) {
+        const supabase = createClient();
+        await addCashMovement(supabase, {
+          userId,
+          sessionId: session.id,
+          type: values.type,
+          amount: values.amount,
+          reason: values.reason,
+        });
+      } else {
+        const clientId = crypto.randomUUID();
+        await queueWrite({
+          type: WriteQueueType.CASH_MOVEMENT,
+          clientGeneratedId: clientId,
+          payload: {
+            userId,
+            locationId: selectedLocationId,
+            sessionId: session.id,
+            type: values.type,
+            amount: values.amount,
+            reason: values.reason,
+          },
+        });
+        setOptimisticMovements((current) => [
+          {
+            id: clientId,
+            session_id: session.id,
+            user_id: userId,
+            type: values.type,
+            amount: values.amount,
+            reason: values.reason?.trim() || null,
+            created_at: new Date().toISOString(),
+          },
+          ...current,
+        ]);
+      }
+      toast.success(isOnline ? "Movement recorded" : "Movement queued for sync");
       setMovementOpen(false);
       await refresh();
     } catch (err) {
@@ -229,7 +331,7 @@ export function CashDrawerManager({
     }
   }
 
-  const openSession = data.openSession;
+  const openSession = mergedData.openSession;
 
   return (
     <div className="space-y-6">
@@ -239,6 +341,10 @@ export function CashDrawerManager({
           Open a session, track cash sales and movements, then close with a
           count.
         </p>
+        <CacheSyncNote
+          fromCache={drawerQuery.fromCache}
+          lastSyncedAt={drawerQuery.lastSyncedAt}
+        />
       </div>
 
       {!selectedLocationId ? (
@@ -253,7 +359,7 @@ export function CashDrawerManager({
             <OpenSessionPanel
               session={openSession}
               currency={currency}
-              movements={data.movements}
+              movements={mergedData.movements}
               onClose={() => setCloseDrawerOpen(true)}
               onAddMovement={() => setMovementOpen(true)}
               onExportMovements={handleExportMovements}

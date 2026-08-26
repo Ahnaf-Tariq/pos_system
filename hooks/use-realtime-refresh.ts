@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useConnectivity } from '@/components/offline/offline-provider'
 
 /**
  * Subscribe to postgres_changes on shop-scoped tables and re-fetch UI.
@@ -22,9 +23,10 @@ export function useRealtimeRefresh({
 }) {
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const { online } = useConnectivity()
 
   useEffect(() => {
-    if (!enabled || !userId || tables.length === 0) return
+    if (!online || !enabled || !userId || tables.length === 0) return
 
     const supabase = createClient()
     const channelName = `rt:${userId}:${tables.join(',')}`
@@ -57,5 +59,5 @@ export function useRealtimeRefresh({
       if (timer) clearTimeout(timer)
       void supabase.removeChannel(channel)
     }
-  }, [userId, tables.join('|'), enabled, debounceMs])
+  }, [userId, tables.join('|'), enabled, debounceMs, online])
 }

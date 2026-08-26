@@ -20,10 +20,15 @@ import {
   usePosStore,
 } from "@/lib/pos-store";
 import { enqueueOfflineOrder } from "@/lib/offline/db";
+import { syncPendingWrites } from "@/lib/offline/sync-engine";
+import { checkConnectivity } from "@/lib/offline/network";
 import {
-  startOfflineSyncLoop,
-  syncPendingOrders,
-} from "@/lib/offline/sync-engine";
+  allTablesCacheKey,
+  customersCacheKey,
+  menuCacheKey,
+} from "@/lib/offline/cache-keys";
+import { useOfflineQuery } from "@/hooks/use-offline-query";
+import { CacheSyncNote } from "@/components/offline/cache-sync-note";
 import { fetchCustomersList } from "@/lib/customers/catalog";
 import { fetchMenuCatalog } from "@/lib/menu/catalog";
 import {
@@ -37,7 +42,6 @@ import { useShopRealtime } from "@/hooks/use-shop-realtime";
 import { PosCart } from "@/components/pos/cart";
 import { ModifierPicker } from "@/components/pos/modifier-picker";
 import { PaymentModal } from "@/components/pos/payment-modal";
-import { OfflineStatusIndicator } from "@/components/pos/offline-status";
 import { CustomerEditorDialog } from "@/components/customers/customer-editor-dialog";
 import { openThermalReceipt } from "@/lib/receipts/open-thermal";
 import { Select } from "antd";
@@ -72,10 +76,57 @@ export function PosTerminal({
 }: PosTerminalProps) {
   const router = useRouter();
   const { selectedLocationId } = useLocationContext();
-  const [tables, setTables] = useState(initialTables);
-  const [menuCategories, setMenuCategories] = useState(categories);
-  const [menuItems, setMenuItems] = useState(items);
-  const [customerList, setCustomerList] = useState(initialCustomers);
+
+  const menuQuery = useOfflineQuery({
+    cacheKey: selectedLocationId
+      ? menuCacheKey(userId, selectedLocationId)
+      : "menu:disabled",
+    enabled: Boolean(selectedLocationId),
+    fetchFn: async () => {
+      const supabase = createClient();
+      return fetchMenuCatalog(supabase, userId, selectedLocationId!);
+    },
+  });
+
+  const customersQuery = useOfflineQuery({
+    cacheKey: selectedLocationId
+      ? customersCacheKey(userId, selectedLocationId)
+      : "customers:disabled",
+    enabled: Boolean(selectedLocationId),
+    fetchFn: async () => {
+      const supabase = createClient();
+      return fetchCustomersList(supabase, userId, selectedLocationId!);
+    },
+  });
+
+  const tablesQuery = useOfflineQuery({
+    cacheKey: allTablesCacheKey(userId),
+    enabled: true,
+    fetchFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("restaurant_tables")
+        .select("*")
+        .eq("user_id", userId)
+        .order("label", { ascending: true });
+      if (error) throw new Error(error.message);
+      return (data as RestaurantTable[]) ?? [];
+    },
+  });
+
+  const menuCategories = menuQuery.data?.categories ?? categories;
+  const menuItems = menuQuery.data?.items ?? items;
+  const customerList = customersQuery.data ?? initialCustomers;
+  const tables = tablesQuery.data ?? initialTables;
+  const dataLoading = menuQuery.loading || customersQuery.loading || tablesQuery.loading;
+  const fromCache =
+    menuQuery.fromCache || customersQuery.fromCache || tablesQuery.fromCache;
+  const lastSyncedAt =
+    [menuQuery.lastSyncedAt, customersQuery.lastSyncedAt, tablesQuery.lastSyncedAt]
+      .filter(Boolean)
+      .sort()
+      .pop() ?? null;
+
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
   const [categoryId, setCategoryId] = useState<string | "all">("all");
   const [modifierItem, setModifierItem] = useState<MenuItemWithGroups | null>(
@@ -134,30 +185,11 @@ export function PosTerminal({
     taxRatePercent,
   );
 
-  const refreshMenu = useCallback(async () => {
-    if (!selectedLocationId) {
-      setMenuCategories([]);
-      setMenuItems([]);
-      return;
-    }
-    const supabase = createClient();
-    try {
-      const catalog = await fetchMenuCatalog(
-        supabase,
-        userId,
-        selectedLocationId,
-      );
-      setMenuCategories(catalog.categories);
-      setMenuItems(catalog.items);
-    } catch {
-      setMenuCategories([]);
-      setMenuItems([]);
-    }
-  }, [selectedLocationId, userId]);
-
-  useEffect(() => {
-    void refreshMenu();
-  }, [refreshMenu]);
+  const refreshPosData = useCallback(() => {
+    void menuQuery.refresh();
+    void customersQuery.refresh();
+    void tablesQuery.refresh();
+  }, [menuQuery.refresh, customersQuery.refresh, tablesQuery.refresh]);
 
   const didSkipInitialLocation = useRef(false);
   useEffect(() => {
@@ -168,23 +200,6 @@ export function PosTerminal({
     setCategoryId("all");
     clearCart();
   }, [selectedLocationId, clearCart]);
-
-  const refreshCustomers = useCallback(async () => {
-    if (!selectedLocationId) {
-      setCustomerList([]);
-      return;
-    }
-    const supabase = createClient();
-    try {
-      setCustomerList(await fetchCustomersList(supabase, userId, selectedLocationId));
-    } catch {
-      setCustomerList([]);
-    }
-  }, [selectedLocationId, userId]);
-
-  useEffect(() => {
-    void refreshCustomers();
-  }, [refreshCustomers]);
 
   useEffect(() => {
     if (customerId && !customerList.some((customer) => customer.id === customerId)) {
@@ -197,26 +212,6 @@ export function PosTerminal({
       setTableId(null);
     }
   }, [tableId, locationTables, setTableId]);
-
-  const refreshTables = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("restaurant_tables")
-      .select("*")
-      .eq("user_id", userId)
-      .order("label", { ascending: true });
-    setTables((data as RestaurantTable[]) ?? []);
-  }, [userId]);
-
-  const refreshPosData = useCallback(() => {
-    void refreshTables();
-    void refreshMenu();
-  }, [refreshTables, refreshMenu]);
-
-  useEffect(() => {
-    const supabase = createClient();
-    return startOfflineSyncLoop(supabase);
-  }, []);
 
   useEffect(() => {
     if (!initialTableId) return;
@@ -254,12 +249,7 @@ export function PosTerminal({
   }
 
   function handleCustomerSaved(customer: Customer) {
-    setCustomerList((prev) => {
-      const without = prev.filter((row) => row.id !== customer.id);
-      return [...without, customer].sort((a, b) =>
-        a.full_name.localeCompare(b.full_name),
-      );
-    });
+    void customersQuery.refresh();
     setCustomerId(customer.id);
   }
 
@@ -287,7 +277,8 @@ export function PosTerminal({
     const clientGeneratedId = crypto.randomUUID();
 
     try {
-      if (navigator.onLine) {
+      const online = await checkConnectivity();
+      if (online) {
         const supabase = createClient();
         await assertRecipeStockForCart({
           supabase,
@@ -316,9 +307,9 @@ export function PosTerminal({
         action,
       });
 
-      if (navigator.onLine) {
+      if (online) {
         const supabase = createClient();
-        await syncPendingOrders(supabase);
+        await syncPendingWrites(supabase);
 
         if (action === "pay") {
           const { data: paidOrder } = await supabase
@@ -365,9 +356,15 @@ export function PosTerminal({
           <p className="text-sm text-muted-foreground">
             Fast order entry for the floor.
           </p>
+          <CacheSyncNote fromCache={fromCache} lastSyncedAt={lastSyncedAt} />
         </div>
-        <OfflineStatusIndicator />
       </div>
+
+      {(menuQuery.noCachedData || customersQuery.noCachedData) && !dataLoading ? (
+        <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+          No cached menu data yet. Connect once while online to download.
+        </p>
+      ) : null}
 
       <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.4fr)_360px]">
         <section className="flex h-[min(70vh,40rem)] min-h-[28rem] flex-col rounded-lg border border-border bg-card lg:h-full lg:min-h-0">

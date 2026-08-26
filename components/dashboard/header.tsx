@@ -140,7 +140,8 @@ export function DashboardHeader({
                   ...locationItems,
                 ],
               }}
-              overlayStyle={{ minWidth: "160px" }}
+              // overlayStyle={{ minWidth: "160px" }}
+              styles={{ root: { minWidth: "160px" } }}
               trigger={["click"]}
             >
               <Button variant="outline" className="min-h-9 gap-1.5">
@@ -169,7 +170,8 @@ export function DashboardHeader({
 
           <Dropdown
             menu={{ items: profileMenuItems }}
-            overlayStyle={{ minWidth: "180px" }}
+            // overlayStyle={{ minWidth: "180px" }}
+            styles={{ root: { minWidth: "180px" } }}
             trigger={["click"]}
             placement="bottomRight"
           >

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useConnectivity } from '@/components/offline/offline-provider'
 
 export function useShopRealtime({
   userId,
@@ -14,8 +15,10 @@ export function useShopRealtime({
   onChange: () => void
   includeOrderItems?: boolean
 }) {
+  const { online } = useConnectivity()
+
   useEffect(() => {
-    if (!userId || !locationId) return
+    if (!online || !userId || !locationId) return
 
     const supabase = createClient()
     let channel = supabase
@@ -59,5 +62,5 @@ export function useShopRealtime({
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [userId, locationId, onChange, includeOrderItems])
+  }, [userId, locationId, onChange, includeOrderItems, online])
 }

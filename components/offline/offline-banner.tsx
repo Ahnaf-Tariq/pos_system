@@ -1,57 +1,45 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { CloudOff, RefreshCw } from 'lucide-react'
+import { CloudOff, RefreshCw, Upload } from 'lucide-react'
+import { useOfflineContext } from '@/components/offline/offline-provider'
 import { createClient } from '@/lib/supabase/client'
-import { countPendingWrites } from '@/lib/offline/db'
 import { syncPendingWrites } from '@/lib/offline/sync-engine'
-import { useConnectivity } from '@/components/offline/offline-provider'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useState } from 'react'
 
-export function OfflineStatusIndicator() {
-  const { online, refreshPendingCount } = useConnectivity()
-  const [pendingCount, setPendingCount] = useState(0)
+export function OfflineBanner() {
+  const { online, pendingWrites, refreshPendingCount } = useOfflineContext()
   const [syncing, setSyncing] = useState(false)
-
-  async function refreshCount() {
-    setPendingCount(await countPendingWrites())
-    await refreshPendingCount()
-  }
-
-  useEffect(() => {
-    void refreshCount()
-    const intervalId = window.setInterval(() => {
-      void refreshCount()
-    }, 3000)
-    return () => window.clearInterval(intervalId)
-  }, [])
 
   async function handleSyncNow() {
     setSyncing(true)
     try {
       const supabase = createClient()
       await syncPendingWrites(supabase)
-      await refreshCount()
+      await refreshPendingCount()
     } finally {
       setSyncing(false)
     }
   }
 
-  if (online && pendingCount === 0) return null
+  if (online && pendingWrites === 0) return null
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
       {!online ? (
         <Badge variant="warning" className="gap-1">
           <CloudOff className="size-3" />
-          Offline
+          Offline — showing cached data
         </Badge>
       ) : null}
-      {pendingCount > 0 ? (
+      {pendingWrites > 0 ? (
         <>
-          <Badge variant="secondary">{pendingCount} pending upload{pendingCount === 1 ? '' : 's'}</Badge>
+          <Badge variant="secondary" className="gap-1">
+            <Upload className="size-3" />
+            {pendingWrites} pending upload{pendingWrites === 1 ? '' : 's'}
+          </Badge>
           <Button
             type="button"
             size="sm"
@@ -60,7 +48,7 @@ export function OfflineStatusIndicator() {
             onClick={handleSyncNow}
           >
             <RefreshCw className={cn('size-3.5', syncing && 'animate-spin')} />
-            Sync
+            Sync now
           </Button>
         </>
       ) : null}

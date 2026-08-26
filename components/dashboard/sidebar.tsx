@@ -6,6 +6,11 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import { getNavItemsForRole } from "@/lib/navigation";
+import {
+  isGracefulOfflineRoute,
+  isOfflineCapableRoute,
+} from "@/lib/offline/constants";
+import { useConnectivity } from "@/components/offline/offline-provider";
 import type { StaffRole } from "@/types/enums";
 import { Button } from "@/components/ui/button";
 
@@ -25,7 +30,20 @@ export function DashboardSidebar({
   onToggle,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const { online } = useConnectivity();
   const items = getNavItemsForRole(role, { kdsEnabled });
+
+  function handleOfflineNav(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    href: string,
+  ) {
+    if (online) return;
+
+    if (isOfflineCapableRoute(href)) {
+      event.preventDefault();
+      window.location.assign(href);
+    }
+  }
 
   return (
     <aside
@@ -52,9 +70,13 @@ export function DashboardSidebar({
       <div className="flex h-14 shrink-0 items-center border-b border-sidebar-border px-3 pr-5">
         <Link
           href={ROUTES.dashboard}
+          onClick={(event) => {
+            if (!online) event.preventDefault();
+          }}
           className={cn(
             "min-w-0 font-semibold tracking-tight",
             collapsed && "mx-auto",
+            !online && "pointer-events-none opacity-60",
           )}
         >
           {collapsed ? (
@@ -73,15 +95,21 @@ export function DashboardSidebar({
             pathname === item.href ||
             (item.href !== ROUTES.dashboard && pathname.startsWith(item.href));
           const Icon = item.icon;
+          const offlineBlocked =
+            !online &&
+            !isOfflineCapableRoute(item.href) &&
+            !isGracefulOfflineRoute(item.href);
 
           return (
             <Link
               key={item.href}
               href={item.href}
               title={item.title}
+              onClick={(event) => handleOfflineNav(event, item.href)}
               className={cn(
                 "flex min-h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-colors",
                 collapsed && "justify-center px-0",
+                offlineBlocked && "pointer-events-none opacity-40",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground",

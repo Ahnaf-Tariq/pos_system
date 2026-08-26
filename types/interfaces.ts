@@ -646,6 +646,41 @@ export interface PlatformMetrics {
 
 export type OfflineOrderAction = "send_to_kitchen" | "pay";
 
+export const WriteQueueType = {
+  ORDER: "order",
+  CASH_SESSION_OPEN: "cash_session_open",
+  CASH_SESSION_CLOSE: "cash_session_close",
+  CASH_MOVEMENT: "cash_movement",
+  TABLE_CREATE: "table_create",
+  TABLE_UPDATE_STATUS: "table_update_status",
+  TABLE_DELETE: "table_delete",
+  TABLE_TRANSFER: "table_transfer",
+  TABLE_MERGE: "table_merge",
+  KDS_BUMP_TICKET: "kds_bump_ticket",
+  KDS_BUMP_ITEM: "kds_bump_item",
+  KDS_MARK_SERVED: "kds_mark_served",
+  KDS_SETTLE: "kds_settle",
+} as const;
+
+export type WriteQueueTypeValue =
+  (typeof WriteQueueType)[keyof typeof WriteQueueType];
+
+export interface ReadCacheRecord {
+  key: string;
+  data: unknown;
+  lastSyncedAt: string;
+}
+
+export interface QueuedWriteRecord {
+  id?: number;
+  client_generated_id: string;
+  type: WriteQueueTypeValue;
+  payload: unknown;
+  pending_sync: boolean;
+  created_at: string;
+  last_error: string | null;
+}
+
 export interface OfflineOrderRecord {
   id?: number;
   client_generated_id: string;

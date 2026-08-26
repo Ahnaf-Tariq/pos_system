@@ -16,6 +16,8 @@ import type { KdsTicket, KdsTicketItem } from '@/types/interfaces'
 import { KdsStatus, OrderStatus, type PaymentMethod } from '@/types/enums'
 import { PaymentModal } from '@/components/pos/payment-modal'
 import { openThermalReceipt } from '@/lib/receipts/open-thermal'
+import { checkConnectivity } from '@/lib/offline/network'
+import { queueWrite, WriteQueueType } from '@/lib/offline/write-queue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn, formatMoney } from '@/lib/utils'
@@ -59,8 +61,16 @@ export function OrderCard({
       if (isPaid) {
         setBusy(true)
         try {
-          const supabase = createClient()
-          await markPaidTicketServed(supabase, userId, ticket.order.id)
+          const isOnline = await checkConnectivity()
+          if (isOnline) {
+            const supabase = createClient()
+            await markPaidTicketServed(supabase, userId, ticket.order.id)
+          } else {
+            await queueWrite({
+              type: WriteQueueType.KDS_MARK_SERVED,
+              payload: { userId, orderId: ticket.order.id },
+            })
+          }
           onChanged()
         } catch (err) {
           toast.error(err instanceof Error ? err.message : 'Could not mark served')
@@ -75,8 +85,16 @@ export function OrderCard({
 
     setBusy(true)
     try {
-      const supabase = createClient()
-      await bumpTicket(supabase, userId, ticket)
+      const isOnline = await checkConnectivity()
+      if (isOnline) {
+        const supabase = createClient()
+        await bumpTicket(supabase, userId, ticket)
+      } else {
+        await queueWrite({
+          type: WriteQueueType.KDS_BUMP_TICKET,
+          payload: { userId, ticket },
+        })
+      }
       onChanged()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not bump ticket')
@@ -96,8 +114,16 @@ export function OrderCard({
       if (isPaid) {
         setBusy(true)
         try {
-          const supabase = createClient()
-          await markPaidTicketServed(supabase, userId, ticket.order.id)
+          const isOnline = await checkConnectivity()
+          if (isOnline) {
+            const supabase = createClient()
+            await markPaidTicketServed(supabase, userId, ticket.order.id)
+          } else {
+            await queueWrite({
+              type: WriteQueueType.KDS_MARK_SERVED,
+              payload: { userId, orderId: ticket.order.id },
+            })
+          }
           onChanged()
         } catch (err) {
           toast.error(err instanceof Error ? err.message : 'Could not bump item')
@@ -112,8 +138,16 @@ export function OrderCard({
 
     setBusy(true)
     try {
-      const supabase = createClient()
-      await bumpItem(supabase, userId, item, ticket)
+      const isOnline = await checkConnectivity()
+      if (isOnline) {
+        const supabase = createClient()
+        await bumpItem(supabase, userId, item, ticket)
+      } else {
+        await queueWrite({
+          type: WriteQueueType.KDS_BUMP_ITEM,
+          payload: { userId, item, ticket },
+        })
+      }
       onChanged()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not bump item')
@@ -130,11 +164,20 @@ export function OrderCard({
   }) {
     setBusy(true)
     try {
-      const supabase = createClient()
-      await settleTicketAsPaid(supabase, userId, ticket, paymentMethod)
-      toast.success('Payment recorded. Receipt ready to print.')
+      const isOnline = await checkConnectivity()
+      if (isOnline) {
+        const supabase = createClient()
+        await settleTicketAsPaid(supabase, userId, ticket, paymentMethod)
+        toast.success('Payment recorded. Receipt ready to print.')
+        openThermalReceipt(ticket.order.id, { print: true })
+      } else {
+        await queueWrite({
+          type: WriteQueueType.KDS_SETTLE,
+          payload: { userId, ticket, paymentMethod },
+        })
+        toast.success('Payment queued for sync.')
+      }
       onChanged()
-      openThermalReceipt(ticket.order.id, { print: true })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not record payment')
     } finally {

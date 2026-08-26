@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createProxyClient } from "@/lib/supabase/proxy";
+import { resolveAuthUser } from "@/lib/auth/resolve-user";
 import { getShopAccessForAuth, isPlatformAdmin } from "@/lib/auth/shop-access";
 import { AccountStatus } from "@/types/enums";
 import { ROUTES, isDashboardPath, isPlatformPath } from "@/lib/routes";
@@ -12,9 +13,7 @@ export async function proxy(request: NextRequest) {
   });
 
   const supabase = createProxyClient(request, response);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, usedCookieFallback } = await resolveAuthUser(supabase);
 
   const { pathname } = request.nextUrl;
   const isDashboard = isDashboardPath(pathname);
@@ -33,6 +32,12 @@ export async function proxy(request: NextRequest) {
   if (!user) return response;
 
   if (isLoginOrSignup) {
+    if (usedCookieFallback) {
+      const url = request.nextUrl.clone();
+      url.pathname = ROUTES.dashboard;
+      return NextResponse.redirect(url);
+    }
+
     const url = request.nextUrl.clone();
     const admin = await isPlatformAdmin(supabase, user.id);
     if (admin) {
@@ -49,6 +54,12 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isPlatform) {
+    if (usedCookieFallback) {
+      const url = request.nextUrl.clone();
+      url.pathname = ROUTES.dashboard;
+      return NextResponse.redirect(url);
+    }
+
     const admin = await isPlatformAdmin(supabase, user.id);
     if (!admin) {
       const url = request.nextUrl.clone();
@@ -59,6 +70,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isDashboard || isReceipt) {
+    if (usedCookieFallback) {
+      return response;
+    }
+
     const shop = await getShopAccessForAuth(supabase, user.id);
     if (!shop || shop.status !== AccountStatus.APPROVED) {
       const url = request.nextUrl.clone();
@@ -68,6 +83,12 @@ export async function proxy(request: NextRequest) {
   }
 
   if (pathname === ROUTES.pendingApproval) {
+    if (usedCookieFallback) {
+      const url = request.nextUrl.clone();
+      url.pathname = ROUTES.dashboard;
+      return NextResponse.redirect(url);
+    }
+
     const shop = await getShopAccessForAuth(supabase, user.id);
     if (shop?.status === AccountStatus.APPROVED) {
       const url = request.nextUrl.clone();

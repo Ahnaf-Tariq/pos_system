@@ -9,6 +9,11 @@ import { fetchTablesWithOrders, tableStatusStyles } from "@/lib/tables/floor";
 import type { TableWithOrder } from "@/types/interfaces";
 import { useShopRealtime } from "@/hooks/use-shop-realtime";
 import { useLocationContext } from "@/components/dashboard/location-provider";
+import { useOfflineQuery } from "@/hooks/use-offline-query";
+import { tablesCacheKey } from "@/lib/offline/cache-keys";
+import { queueWrite, WriteQueueType } from "@/lib/offline/write-queue";
+import { checkConnectivity } from "@/lib/offline/network";
+import { CacheSyncNote } from "@/components/offline/cache-sync-note";
 import { OrderStatus, TableStatus } from "@/types/enums";
 import { ROUTES } from "@/lib/routes";
 import { formatMoney, formatOrderStatus, cn } from "@/lib/utils";
@@ -70,8 +75,32 @@ const STATUS_OPTIONS = STATUS_FILTERS.map((item) => item.status);
 export function TablesFloor({ userId, currency }: TablesFloorProps) {
   const router = useRouter();
   const { selectedLocationId, selectedLocation } = useLocationContext();
-  const [tables, setTables] = useState<TableWithOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const tablesQuery = useOfflineQuery({
+    cacheKey: selectedLocationId
+      ? tablesCacheKey(userId, selectedLocationId)
+      : "tables:disabled",
+    enabled: Boolean(selectedLocationId),
+    fetchFn: async () => {
+      const supabase = createClient();
+      return fetchTablesWithOrders(supabase, userId, selectedLocationId!);
+    },
+  });
+
+  const tables = tablesQuery.data ?? [];
+  const loading = tablesQuery.loading;
+
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!selectedLocationId) return;
+      if (!opts?.silent) {
+        await tablesQuery.refresh();
+        return;
+      }
+      void tablesQuery.refresh();
+    },
+    [selectedLocationId, tablesQuery.refresh],
+  );
   const [selected, setSelected] = useState<TableWithOrder | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -84,45 +113,17 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [statusFilters, setStatusFilters] = useState<TableStatus[]>([]);
 
-  const refresh = useCallback(
-    async (opts?: { silent?: boolean }) => {
-      if (!selectedLocationId) {
-        setTables([]);
-        setLoading(false);
-        return;
-      }
-      if (!opts?.silent) setLoading(true);
-      try {
-        const supabase = createClient();
-        const rows = await fetchTablesWithOrders(
-          supabase,
-          userId,
-          selectedLocationId,
-        );
-        setTables(rows);
-        setSelected((current) =>
-          current ? (rows.find((row) => row.id === current.id) ?? null) : null,
-        );
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Could not load tables";
-        toast.error(message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [selectedLocationId, userId],
-  );
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
   useShopRealtime({
     userId,
     locationId: selectedLocationId,
     onChange: () => void refresh({ silent: true }),
   });
+
+  useEffect(() => {
+    if (!selected) return;
+    const updated = tables.find((row) => row.id === selected.id);
+    if (updated) setSelected(updated);
+  }, [tables, selected?.id]);
 
   const visibleTables = useMemo(() => {
     if (statusFilters.length === 0) return tables;
@@ -162,78 +163,132 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
   async function createTable() {
     if (!selectedLocationId || !label.trim()) return;
     setBusy(true);
-    const supabase = createClient();
-    const { error: insertError } = await supabase
-      .from("restaurant_tables")
-      .insert({
-        user_id: userId,
-        location_id: selectedLocationId,
-        label: label.trim(),
-        seats: Math.max(1, Number(seats) || 4),
-        status: TableStatus.AVAILABLE,
-      });
-    setBusy(false);
-    if (insertError) {
-      toast.error(insertError.message);
-      return;
+    const isOnline = await checkConnectivity();
+    const trimmedLabel = label.trim();
+    const seatCount = Math.max(1, Number(seats) || 4);
+
+    try {
+      if (isOnline) {
+        const supabase = createClient();
+        const { error: insertError } = await supabase
+          .from("restaurant_tables")
+          .insert({
+            user_id: userId,
+            location_id: selectedLocationId,
+            label: trimmedLabel,
+            seats: seatCount,
+            status: TableStatus.AVAILABLE,
+          });
+        if (insertError) throw new Error(insertError.message);
+      } else {
+        const clientId = crypto.randomUUID();
+        await queueWrite({
+          type: WriteQueueType.TABLE_CREATE,
+          clientGeneratedId: clientId,
+          payload: {
+            userId,
+            locationId: selectedLocationId,
+            label: trimmedLabel,
+            seats: seatCount,
+          },
+        });
+      }
+
+      setCreateOpen(false);
+      setLabel("");
+      setSeats("4");
+      toast.success(isOnline ? "Table created" : "Table queued for sync");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not create table");
+    } finally {
+      setBusy(false);
     }
-    setCreateOpen(false);
-    setLabel("");
-    setSeats("4");
-    toast.success("Table created");
-    await refresh();
   }
 
   async function updateStatus(status: TableStatus) {
-    if (!selected) return;
+    if (!selected || !selectedLocationId) return;
     setBusy(true);
-    const supabase = createClient();
-    const { error: updateError } = await supabase
-      .from("restaurant_tables")
-      .update({ status })
-      .eq("id", selected.id)
-      .eq("user_id", userId);
-    setBusy(false);
-    if (updateError) {
-      toast.error(updateError.message);
-      return;
-    }
+    const isOnline = await checkConnectivity();
 
-    if (
-      status === TableStatus.AVAILABLE &&
-      selected.status !== TableStatus.AVAILABLE
-    ) {
-      const { notifyTableFreed } = await import("@/lib/notifications/create");
-      await notifyTableFreed(supabase, {
-        userId,
-        locationId: selected.location_id,
-        tableId: selected.id,
-        tableLabel: selected.label,
-      });
-    }
+    try {
+      if (isOnline) {
+        const supabase = createClient();
+        const { error: updateError } = await supabase
+          .from("restaurant_tables")
+          .update({ status })
+          .eq("id", selected.id)
+          .eq("user_id", userId);
+        if (updateError) throw new Error(updateError.message);
 
-    toast.success("Table status updated");
-    await refresh();
+        if (
+          status === TableStatus.AVAILABLE &&
+          selected.status !== TableStatus.AVAILABLE
+        ) {
+          const { notifyTableFreed } = await import("@/lib/notifications/create");
+          await notifyTableFreed(supabase, {
+            userId,
+            locationId: selected.location_id,
+            tableId: selected.id,
+            tableLabel: selected.label,
+          });
+        }
+      } else {
+        await queueWrite({
+          type: WriteQueueType.TABLE_UPDATE_STATUS,
+          payload: {
+            userId,
+            tableId: selected.id,
+            locationId: selectedLocationId,
+            status,
+            tableLabel: selected.label,
+            previousStatus: selected.status,
+          },
+        });
+      }
+
+      toast.success(isOnline ? "Table status updated" : "Status change queued");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not update status");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function confirmDeleteTable() {
     if (!selected) return;
     setDeleteLoading(true);
-    const supabase = createClient();
-    const { error: deleteError } = await supabase
-      .from("restaurant_tables")
-      .delete()
-      .eq("id", selected.id)
-      .eq("user_id", userId);
-    if (deleteError) {
-      toast.error(deleteError.message);
-    } else {
+    const isOnline = await checkConnectivity();
+
+    try {
+      if (isOnline) {
+        const supabase = createClient();
+        const { error: deleteError } = await supabase
+          .from("restaurant_tables")
+          .delete()
+          .eq("id", selected.id)
+          .eq("user_id", userId);
+        if (deleteError) throw new Error(deleteError.message);
+      } else {
+        await queueWrite({
+          type: WriteQueueType.TABLE_DELETE,
+          payload: {
+            userId,
+            tableId: selected.id,
+          },
+        });
+      }
+
       setSelected(null);
-      toast.success("Table deleted");
+      toast.success(isOnline ? "Table deleted" : "Delete queued for sync");
       setDeleteOpen(false);
       await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete table");
+    } finally {
+      setDeleteLoading(false);
     }
-    setDeleteLoading(false);
   }
 
   function openInPos(table: TableWithOrder) {
@@ -241,122 +296,147 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
   }
 
   async function transferOrder() {
-    if (!selected?.activeOrder || !targetTableId) return;
+    if (!selected?.activeOrder || !targetTableId || !selectedLocationId) return;
     setBusy(true);
-    const supabase = createClient();
+    const isOnline = await checkConnectivity();
 
-    const { error: orderError } = await supabase
-      .from("orders")
-      .update({ table_id: targetTableId })
-      .eq("id", selected.activeOrder.id)
-      .eq("user_id", userId);
+    try {
+      if (isOnline) {
+        const supabase = createClient();
+        const { error: orderError } = await supabase
+          .from("orders")
+          .update({ table_id: targetTableId })
+          .eq("id", selected.activeOrder.id)
+          .eq("user_id", userId);
+        if (orderError) throw new Error(orderError.message);
 
-    if (orderError) {
+        await supabase
+          .from("restaurant_tables")
+          .update({ status: TableStatus.AVAILABLE })
+          .eq("id", selected.id)
+          .eq("user_id", userId);
+
+        await supabase
+          .from("restaurant_tables")
+          .update({ status: TableStatus.OCCUPIED })
+          .eq("id", targetTableId)
+          .eq("user_id", userId);
+
+        const { notifyTableFreed } = await import("@/lib/notifications/create");
+        await notifyTableFreed(supabase, {
+          userId,
+          locationId: selected.location_id,
+          tableId: selected.id,
+          tableLabel: selected.label,
+        });
+      } else {
+        await queueWrite({
+          type: WriteQueueType.TABLE_TRANSFER,
+          payload: {
+            userId,
+            locationId: selectedLocationId,
+            sourceTableId: selected.id,
+            sourceTableLabel: selected.label,
+            targetTableId,
+            orderId: selected.activeOrder.id,
+          },
+        });
+      }
+
+      setTransferOpen(false);
+      setTargetTableId("");
+      toast.success(isOnline ? "Order transferred" : "Transfer queued for sync");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not transfer order");
+    } finally {
       setBusy(false);
-      toast.error(orderError.message);
-      return;
     }
-
-    await supabase
-      .from("restaurant_tables")
-      .update({ status: TableStatus.AVAILABLE })
-      .eq("id", selected.id)
-      .eq("user_id", userId);
-
-    await supabase
-      .from("restaurant_tables")
-      .update({ status: TableStatus.OCCUPIED })
-      .eq("id", targetTableId)
-      .eq("user_id", userId);
-
-    const { notifyTableFreed } = await import("@/lib/notifications/create");
-    await notifyTableFreed(supabase, {
-      userId,
-      locationId: selected.location_id,
-      tableId: selected.id,
-      tableLabel: selected.label,
-    });
-
-    setBusy(false);
-    setTransferOpen(false);
-    setTargetTableId("");
-    toast.success("Order transferred");
-    await refresh();
   }
 
   async function mergeOrders() {
-    if (!selected?.activeOrder || !targetTableId) return;
+    if (!selected?.activeOrder || !targetTableId || !selectedLocationId) return;
     const source = otherOccupied.find((table) => table.id === targetTableId);
     if (!source?.activeOrder) {
-      const message =
-        "Pick an occupied table with an active order to merge from";
-      toast.error(message);
+      toast.error("Pick an occupied table with an active order to merge from");
       return;
     }
 
     setBusy(true);
-    const supabase = createClient();
+    const isOnline = await checkConnectivity();
 
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .update({ order_id: selected.activeOrder.id })
-      .eq("order_id", source.activeOrder.id)
-      .eq("user_id", userId);
+    try {
+      if (isOnline) {
+        const supabase = createClient();
+        const { error: itemsError } = await supabase
+          .from("order_items")
+          .update({ order_id: selected.activeOrder.id })
+          .eq("order_id", source.activeOrder.id)
+          .eq("user_id", userId);
+        if (itemsError) throw new Error(itemsError.message);
 
-    if (itemsError) {
+        const mergedTotal =
+          Number(selected.activeOrder.grand_total) +
+          Number(source.activeOrder.grand_total);
+
+        await supabase
+          .from("orders")
+          .update({ grand_total: mergedTotal, subtotal: mergedTotal })
+          .eq("id", selected.activeOrder.id)
+          .eq("user_id", userId);
+
+        await supabase
+          .from("orders")
+          .update({
+            status: OrderStatus.VOID,
+            table_id: null,
+            closed_at: new Date().toISOString(),
+          })
+          .eq("id", source.activeOrder.id)
+          .eq("user_id", userId);
+
+        await supabase
+          .from("restaurant_tables")
+          .update({ status: TableStatus.AVAILABLE })
+          .eq("id", source.id)
+          .eq("user_id", userId);
+
+        await supabase
+          .from("restaurant_tables")
+          .update({ status: TableStatus.OCCUPIED })
+          .eq("id", selected.id)
+          .eq("user_id", userId);
+
+        const { notifyTableFreed } = await import("@/lib/notifications/create");
+        await notifyTableFreed(supabase, {
+          userId,
+          locationId: source.location_id,
+          tableId: source.id,
+          tableLabel: source.label,
+        });
+      } else {
+        await queueWrite({
+          type: WriteQueueType.TABLE_MERGE,
+          payload: {
+            userId,
+            locationId: selectedLocationId,
+            targetTableId: selected.id,
+            sourceTableId: source.id,
+            sourceOrderId: source.activeOrder.id,
+            targetOrderId: selected.activeOrder.id,
+          },
+        });
+      }
+
+      setMergeOpen(false);
+      setTargetTableId("");
+      toast.success(isOnline ? "Orders merged" : "Merge queued for sync");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not merge orders");
+    } finally {
       setBusy(false);
-      toast.error(itemsError.message);
-      return;
     }
-
-    const mergedTotal =
-      Number(selected.activeOrder.grand_total) +
-      Number(source.activeOrder.grand_total);
-
-    await supabase
-      .from("orders")
-      .update({
-        grand_total: mergedTotal,
-        subtotal: mergedTotal,
-      })
-      .eq("id", selected.activeOrder.id)
-      .eq("user_id", userId);
-
-    await supabase
-      .from("orders")
-      .update({
-        status: OrderStatus.VOID,
-        table_id: null,
-        closed_at: new Date().toISOString(),
-      })
-      .eq("id", source.activeOrder.id)
-      .eq("user_id", userId);
-
-    await supabase
-      .from("restaurant_tables")
-      .update({ status: TableStatus.AVAILABLE })
-      .eq("id", source.id)
-      .eq("user_id", userId);
-
-    await supabase
-      .from("restaurant_tables")
-      .update({ status: TableStatus.OCCUPIED })
-      .eq("id", selected.id)
-      .eq("user_id", userId);
-
-    const { notifyTableFreed } = await import("@/lib/notifications/create");
-    await notifyTableFreed(supabase, {
-      userId,
-      locationId: source.location_id,
-      tableId: source.id,
-      tableLabel: source.label,
-    });
-
-    setBusy(false);
-    setMergeOpen(false);
-    setTargetTableId("");
-    toast.success("Orders merged");
-    await refresh();
   }
 
   return (
@@ -365,9 +445,12 @@ export function TablesFloor({ userId, currency }: TablesFloorProps) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Tables</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Floor plan for {selectedLocation?.name ?? "your location"} · live
-            via Realtime
+            Floor plan for {selectedLocation?.name ?? "your location"}
           </p>
+          <CacheSyncNote
+            fromCache={tablesQuery.fromCache}
+            lastSyncedAt={tablesQuery.lastSyncedAt}
+          />
         </div>
         <div className="flex gap-2">
           <Button
